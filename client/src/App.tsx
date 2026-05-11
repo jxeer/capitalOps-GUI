@@ -73,6 +73,7 @@ import WorkOrders from "@/pages/work-orders";
 import InvestorPortal from "@/pages/investor-portal";
 import Profile from "@/pages/profile";
 import Connections from "@/pages/connections";
+import EntitlementPage from "@/pages/entitlement";
 import AuthPage from "@/pages/auth-page";
 import ForgotPasswordPage from "@/pages/forgot-password-page";
 import ResetPasswordPage from "@/pages/reset-password-page";
@@ -282,6 +283,7 @@ function ProtectedLayout() {
               <Route path="/risk-flags" component={RiskFlags} />
               <Route path="/vendors" component={Vendors} />
               <Route path="/work-orders" component={WorkOrders} />
+              <Route path="/entitlement" component={EntitlementPage} />
               <Route path="/investor-portal" component={InvestorPortal} />
               <Route path="/profile" component={Profile} />
               <Route path="/connections" component={Connections} />

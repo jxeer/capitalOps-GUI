@@ -21,7 +21,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FolderKanban, Calendar, User, AlertTriangle, Plus, Trash2, Pencil, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
+import { FolderKanban, Calendar, User, AlertTriangle, Plus, Trash2, Pencil, TrendingUp, Clock, CheckCircle2, ChevronDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ import { ImageLightbox } from "@/components/image-lightbox";
 import { AssetLocationMap } from "@/components/asset-location-map";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
+import { FieldMediaUploader } from "@/components/FieldMediaUploader";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/formatters";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -95,6 +96,8 @@ export default function Projects() {
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Project | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [location, setLocation] = useState<{ address: string; lat: number; lng: number } | undefined>(undefined);
   const [mediaPreviews, setMediaPreviews] = useState<{ url: string; type: "image" | "video"; name: string }[]>([]);
@@ -263,6 +266,9 @@ export default function Projects() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setSelectedProject(project); setDetailOpen(true); }} aria-label="View details">
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
                     <Badge variant="secondary" className={getStatusColor(project.status)}>{project.status}</Badge>
                     {user && (
                       <>
@@ -488,6 +494,43 @@ export default function Projects() {
         open={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />
+
+      <Dialog open={detailOpen} onOpenChange={(v) => { if (!v) { setDetailOpen(false); setSelectedProject(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Project Details</DialogTitle>
+          </DialogHeader>
+          {selectedProject && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground">Phase</p>
+                  <p className="text-sm font-medium">{selectedProject.phase}</p>
+                </div>
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <Badge className={getStatusColor(selectedProject.status)}>{selectedProject.status}</Badge>
+                </div>
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground">PM Assigned</p>
+                  <p className="text-sm font-medium">{selectedProject.pmAssigned || "Unassigned"}</p>
+                </div>
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground">Budget</p>
+                  <p className="text-sm font-medium">{formatCurrency(selectedProject.budgetTotal)}</p>
+                </div>
+              </div>
+              {selectedProject.description && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground">Description</p>
+                  <p className="text-sm">{selectedProject.description}</p>
+                </div>
+              )}
+              <FieldMediaUploader projectId={selectedProject.id} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
