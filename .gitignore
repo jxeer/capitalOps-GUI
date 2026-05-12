@@ -1,6 +1,6 @@
 node_modules
-dist
 .DS_Store
+__MACOSX
 server/public
 vite.config.ts.*
 *.tar.gz

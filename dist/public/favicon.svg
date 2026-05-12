@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Dark navy background -->
+  <rect width="32" height="32" rx="6" fill="#0B1A2E"/>
+  <!-- Gold skyline -->
+  <rect x="4"  y="19" width="6" height="7" fill="#C9961A"/>
+  <rect x="12" y="9"  width="8" height="17" fill="#D4A827"/>
+  <rect x="22" y="15" width="6" height="11" fill="#C9961A"/>
+  <!-- Baseline -->
+  <rect x="4" y="26" width="24" height="2" rx="1" fill="#D4A827"/>
+  <!-- Windows on centre tower -->
+  <rect x="13.5" y="11.5" width="2" height="2" rx="0.3" fill="#0B1A2E"/>
+  <rect x="16.5" y="11.5" width="2" height="2" rx="0.3" fill="#0B1A2E"/>
+  <rect x="13.5" y="15"   width="2" height="2" rx="0.3" fill="#0B1A2E"/>
+  <rect x="16.5" y="15"   width="2" height="2" rx="0.3" fill="#0B1A2E"/>
+  <rect x="13.5" y="18.5" width="2" height="2" rx="0.3" fill="#0B1A2E"/>
+  <rect x="16.5" y="18.5" width="2" height="2" rx="0.3" fill="#0B1A2E"/>
+</svg>
