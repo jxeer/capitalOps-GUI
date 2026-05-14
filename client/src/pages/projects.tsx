@@ -21,7 +21,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FolderKanban, Calendar, User, AlertTriangle, Plus, Trash2, Pencil, TrendingUp, Clock, CheckCircle2, ChevronDown } from "lucide-react";
+import { FolderKanban, Calendar, User, AlertTriangle, Plus, Trash2, Pencil, TrendingUp, Clock, CheckCircle2, ChevronDown, Send } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,34 @@ export default function Projects() {
   const { data: assets } = useQuery<Asset[]>({ queryKey: ["/api/assets"] });
   const { data: milestones } = useQuery<Milestone[]>({ queryKey: ["/api/milestones"] });
   const { user } = useAuth();
+
+  const { data: users } = useQuery({
+    queryKey: ["/api/v1/auth/users"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/v1/auth/users");
+      return res.json();
+    },
+    enabled: user?.role === "sponsor_admin",
+  });
+
+  const sendReportMutation = useMutation({
+    mutationFn: async ({ recipientId, projectId }: { recipientId: number; projectId: number }) => {
+      const res = await apiRequest("POST", "/api/v1/reports/", {
+        recipient_user_id: recipientId,
+        project_id: projectId,
+        report_type: "project_summary",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Report sent successfully" });
+      setReportOpen(false);
+      setReportRecipient("");
+    },
+    onError: () => {
+      toast({ title: "Failed to send report", variant: "destructive" });
+    },
+  });
   const { toast } = useToast();
 
   const [open, setOpen] = useState(false);
@@ -103,6 +131,8 @@ export default function Projects() {
   const [mediaPreviews, setMediaPreviews] = useState<{ url: string; type: "image" | "video"; name: string }[]>([]);
   const [lightboxImages, setLightboxImages] = useState<{ url: string; type: "image" | "video"; name: string }[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportRecipient, setReportRecipient] = useState("");
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   /**
@@ -526,7 +556,49 @@ export default function Projects() {
                   <p className="text-sm">{selectedProject.description}</p>
                 </div>
               )}
+              {user?.role === "sponsor_admin" && (
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={() => setReportOpen(true)} className="gap-2">
+                    <Send className="h-4 w-4" />
+                    Send Report
+                  </Button>
+                </div>
+              )}
               <FieldMediaUploader projectId={selectedProject.id} />
+
+              <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Send Project Report</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Select Recipient</Label>
+                      <Select value={reportRecipient} onValueChange={setReportRecipient}>
+                        <SelectTrigger><SelectValue placeholder="Choose a user" /></SelectTrigger>
+                        <SelectContent>
+                          {(users?.users || []).map((u: { id: number; full_name: string; email: string }) => (
+                            <SelectItem key={u.id} value={String(u.id)}>
+                              {u.full_name} ({u.email})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      className="w-full"
+                      disabled={!reportRecipient || sendReportMutation.isPending}
+                      onClick={() => {
+                        if (selectedProject && reportRecipient) {
+                          sendReportMutation.mutate({ recipientId: Number(reportRecipient), projectId: selectedProject.id });
+                        }
+                      }}
+                    >
+                      {sendReportMutation.isPending ? "Sending..." : "Send Report"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           )}
         </DialogContent>

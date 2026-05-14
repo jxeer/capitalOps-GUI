@@ -41,7 +41,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { formatCurrency, getStatusColor } from "@/lib/formatters";
-import { Handshake, TrendingUp, Clock, Users, ArrowRight, Target, Shield } from "lucide-react";
+import { Handshake, TrendingUp, Clock, Users, ArrowRight, Target, Shield, Send } from "lucide-react";
 import type { Deal, Project, Asset, Investor } from "@shared/schema";
 
 /**

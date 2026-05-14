@@ -37,6 +37,7 @@ import {
   BarChart3,
   Network,
   FileText,
+  BarChart2,
 } from "lucide-react";
 
 // shadcn/ui sidebar components for layout
@@ -90,6 +91,7 @@ const capitalEngineItems: NavItem[] = [
 const executionItems: NavItem[] = [
   { title: "Projects", url: "/projects", icon: FolderKanban },
   { title: "Entitlements", url: "/entitlement", icon: FileText },
+  { title: "Reports", url: "/reports", icon: BarChart2 },
   { title: "Milestones", url: "/milestones", icon: Milestone },
   { title: "Risk Flags", url: "/risk-flags", icon: AlertTriangle },
 ];

@@ -21,7 +21,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Handshake, TrendingUp, Clock, Plus, Trash2, Pencil, Users, CheckCircle2, LayoutGrid, List, Building2 } from "lucide-react";
+import { Handshake, TrendingUp, Clock, Plus, Trash2, Pencil, Users, CheckCircle2, LayoutGrid, List, Building2, Send } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,11 +96,43 @@ export default function Deals() {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  const { data: users } = useQuery({
+    queryKey: ["/api/v1/auth/users"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/v1/auth/users");
+      return res.json();
+    },
+    enabled: user?.role === "sponsor_admin",
+  });
+
+  const sendReportMutation = useMutation({
+    mutationFn: async ({ recipientId, dealId }: { recipientId: number; dealId: number }) => {
+      const res = await apiRequest("POST", "/api/v1/reports/", {
+        recipient_user_id: recipientId,
+        deal_id: dealId,
+        report_type: "deal_summary",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Report sent successfully" });
+      setReportOpen(false);
+      setReportRecipient("");
+      setReportDeal(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to send report", variant: "destructive" });
+    },
+  });
+
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Deal | null>(null);
   const [expandedMatches, setExpandedMatches] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"list" | "cards">("cards");
   const [form, setForm] = useState(emptyForm);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportDeal, setReportDeal] = useState<Deal | null>(null);
+  const [reportRecipient, setReportRecipient] = useState("");
 
   /**
    * Sets a field value in the form state
@@ -347,30 +379,31 @@ export default function Deals() {
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant="secondary" className={getStatusColor(deal.status)}>{deal.status}</Badge>
                     <Badge variant="secondary" className={getStatusColor(deal.riskLevel)}>{deal.riskLevel} Risk</Badge>
-                    {user && (
-                      <>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(deal)} aria-label="Edit deal" data-testid={`button-edit-deal-${deal.id}`}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-7 w-7" data-testid={`button-delete-deal-${deal.id}`} aria-label="Delete deal">
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete this deal?</AlertDialogTitle>
-                              <AlertDialogDescription>This will remove the deal and cannot be undone.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => deleteMutation.mutate(deal.id)} data-testid="button-confirm-delete">Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
+                    {user?.role === "sponsor_admin" && (
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setReportDeal(deal); setReportOpen(true); }} aria-label="Send report" data-testid={`button-send-report-${deal.id}`}>
+                        <Send className="h-3.5 w-3.5" />
+                      </Button>
                     )}
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(deal)} aria-label="Edit deal" data-testid={`button-edit-deal-${deal.id}`}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" data-testid={`button-delete-deal-${deal.id}`} aria-label="Delete deal">
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete this deal?</AlertDialogTitle>
+                          <AlertDialogDescription>This will remove the deal and cannot be undone.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => deleteMutation.mutate(deal.id)} data-testid="button-confirm-delete">Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -561,6 +594,40 @@ export default function Deals() {
               {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Create Deal"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reportOpen} onOpenChange={(v) => { if (!v) { setReportOpen(false); setReportDeal(null); setReportRecipient(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send Deal Report</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Select Recipient</Label>
+              <Select value={reportRecipient} onValueChange={setReportRecipient}>
+                <SelectTrigger><SelectValue placeholder="Choose a user" /></SelectTrigger>
+                <SelectContent>
+                  {(users?.users || []).map((u: { id: number; full_name: string; email: string }) => (
+                    <SelectItem key={u.id} value={String(u.id)}>
+                      {u.full_name} ({u.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              className="w-full"
+              disabled={!reportRecipient || sendReportMutation.isPending}
+              onClick={() => {
+                if (reportDeal && reportRecipient) {
+                  sendReportMutation.mutate({ recipientId: Number(reportRecipient), dealId: Number(reportDeal.id) });
+                }
+              }}
+            >
+              {sendReportMutation.isPending ? "Sending..." : "Send Report"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
