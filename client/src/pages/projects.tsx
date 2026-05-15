@@ -21,7 +21,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FolderKanban, Calendar, User, AlertTriangle, Plus, Trash2, Pencil, TrendingUp, Clock, CheckCircle2, ChevronDown, Send } from "lucide-react";
+import { FolderKanban, Calendar, User, AlertTriangle, Plus, Trash2, Pencil, TrendingUp, Clock, CheckCircle2, ChevronDown, Send, Circle, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { MediaGallery } from "@/components/media-gallery";
 import { ImageLightbox } from "@/components/image-lightbox";
@@ -39,6 +40,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { FieldMediaUploader } from "@/components/FieldMediaUploader";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/formatters";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -413,12 +415,37 @@ export default function Projects() {
                       <span className="text-muted-foreground flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Milestones ({completedMilestones}/{projectMilestones.length})</span>
                       <span className="font-semibold">{milestoneProgress}%</span>
                     </div>
-                    <div className="h-2 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-chart-1 transition-all duration-700"
-                        style={{ width: `${milestoneProgress}%` }}
-                      />
-                    </div>
+                    {(() => {
+                      const completeCount = projectMilestones.filter(m => m.status === "Complete" || m.status === "Completed").length;
+                      const inProgressCount = projectMilestones.filter(m => m.status === "In Progress").length;
+                      const notStartedCount = projectMilestones.length - completeCount - inProgressCount;
+                      const total = projectMilestones.length || 1;
+                      return (
+                        <div className="h-2 rounded-full bg-muted overflow-hidden flex">
+                          {completeCount > 0 && (
+                            <div
+                              className="h-full bg-chart-2 transition-all duration-700"
+                              style={{ width: `${(completeCount / total) * 100}%` }}
+                              title={`Complete: ${completeCount}`}
+                            />
+                          )}
+                          {inProgressCount > 0 && (
+                            <div
+                              className="h-full bg-chart-3 transition-all duration-700"
+                              style={{ width: `${(inProgressCount / total) * 100}%` }}
+                              title={`In Progress: ${inProgressCount}`}
+                            />
+                          )}
+                          {notStartedCount > 0 && (
+                            <div
+                              className="h-full bg-muted-foreground/30 transition-all duration-700"
+                              style={{ width: `${(notStartedCount / total) * 100}%` }}
+                              title={`Not Started: ${notStartedCount}`}
+                            />
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -566,11 +593,203 @@ export default function Projects() {
               )}
               <FieldMediaUploader projectId={selectedProject.id} />
 
-              <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Send Project Report</DialogTitle>
-                  </DialogHeader>
+              {(() => {
+                const projectMilestones = milestones?.filter(m => m.projectId === selectedProject.id) || [];
+                const completeMs = projectMilestones.filter(m => m.status === "Complete" || m.status === "Completed");
+                const inProgressMs = projectMilestones.filter(m => m.status === "In Progress");
+                const notStartedMs = projectMilestones.filter(m => m.status !== "Complete" && m.status !== "Completed" && m.status !== "In Progress");
+                const totalMs = projectMilestones.length || 1;
+
+                const completedByMonth: Record<string, number> = {};
+                completeMs.forEach(m => {
+                  if (m.completionDate) {
+                    const d = new Date(m.completionDate);
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                    completedByMonth[key] = (completedByMonth[key] || 0) + 1;
+                  }
+                });
+                const velocityData = Object.entries(completedByMonth)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([month, count]) => {
+                    const [year, m] = month.split("-");
+                    const d = new Date(Number(year), Number(m) - 1, 1);
+                    return {
+                      month,
+                      label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+                      count,
+                    };
+                  });
+
+                return (
+                  <Tabs defaultValue="overview" className="space-y-4">
+                    <TabsList>
+                      <TabsTrigger value="overview">Overview</TabsTrigger>
+                      <TabsTrigger value="timeline">Timeline</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="overview" className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="p-3 bg-muted rounded-lg">
+                            <p className="text-xs text-muted-foreground">Phase</p>
+                            <p className="text-sm font-medium">{selectedProject.phase}</p>
+                          </div>
+                          <div className="p-3 bg-muted rounded-lg">
+                            <p className="text-xs text-muted-foreground">Status</p>
+                            <Badge className={getStatusColor(selectedProject.status)}>{selectedProject.status}</Badge>
+                          </div>
+                          <div className="p-3 bg-muted rounded-lg">
+                            <p className="text-xs text-muted-foreground">PM Assigned</p>
+                            <p className="text-sm font-medium">{selectedProject.pmAssigned || "Unassigned"}</p>
+                          </div>
+                          <div className="p-3 bg-muted rounded-lg">
+                            <p className="text-xs text-muted-foreground">Budget</p>
+                            <p className="text-sm font-medium">{formatCurrency(selectedProject.budgetTotal)}</p>
+                          </div>
+                        </div>
+                        {selectedProject.description && (
+                          <div className="p-3 bg-muted rounded-lg">
+                            <p className="text-xs text-muted-foreground">Description</p>
+                            <p className="text-sm">{selectedProject.description}</p>
+                          </div>
+                        )}
+                        {user?.role === "sponsor_admin" && (
+                          <div className="flex justify-end">
+                            <Button variant="outline" size="sm" onClick={() => setReportOpen(true)} className="gap-2">
+                              <Send className="h-4 w-4" />
+                              Send Report
+                            </Button>
+                          </div>
+                        )}
+                        <FieldMediaUploader projectId={selectedProject.id} />
+                      </TabsContent>
+
+                    <TabsContent value="timeline" className="space-y-6">
+                      {projectMilestones.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground text-sm">No milestones for this project</div>
+                      ) : (
+                        <>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">Project Health</p>
+                            <div className="h-6 rounded-full bg-muted overflow-hidden flex">
+                              {completeMs.length > 0 && (
+                                <div
+                                  className="h-full bg-chart-2 flex items-center justify-center text-[10px] font-medium text-white"
+                                  style={{ width: `${(completeMs.length / totalMs) * 100}%` }}
+                                  title={`Complete: ${completeMs.length}`}
+                                >
+                                  {completeMs.length > 0 ? `${Math.round((completeMs.length / totalMs) * 100)}%` : ""}
+                                </div>
+                              )}
+                              {inProgressMs.length > 0 && (
+                                <div
+                                  className="h-full bg-chart-3 flex items-center justify-center text-[10px] font-medium text-white"
+                                  style={{ width: `${(inProgressMs.length / totalMs) * 100}%` }}
+                                  title={`In Progress: ${inProgressMs.length}`}
+                                >
+                                  {inProgressMs.length > 0 ? `${Math.round((inProgressMs.length / totalMs) * 100)}%` : ""}
+                                </div>
+                              )}
+                              {notStartedMs.length > 0 && (
+                                <div
+                                  className="h-full flex items-center justify-center text-[10px] font-medium"
+                                  style={{ width: `${(notStartedMs.length / totalMs) * 100}%` }}
+                                  title={`Not Started: ${notStartedMs.length}`}
+                                >
+                                  {notStartedMs.length > 0 ? `${Math.round((notStartedMs.length / totalMs) * 100)}%` : ""}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 text-[10px] text-muted-foreground mt-1">
+                              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-chart-2 inline-block" /> Complete</span>
+                              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-chart-3 inline-block" /> In Progress</span>
+                              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-muted-foreground/30 inline-block" /> Not Started</span>
+                            </div>
+                          </div>
+
+                          {velocityData.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Completion Velocity</p>
+                              <div className="h-40">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={velocityData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                                    <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={0} />
+                                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                                    <Tooltip
+                                      formatter={(v: number) => [`${v} milestone${v !== 1 ? "s" : ""} completed`, "Completed"]}
+                                      labelFormatter={(label) => `Month: ${label}`}
+                                    />
+                                    <Bar dataKey="count" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]}>
+                                      {velocityData.map((entry, i) => (
+                                        <Cell key={i} fill="hsl(var(--chart-2))" />
+                                      ))}
+                                    </Bar>
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="space-y-2">
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Milestones</p>
+                            <div className="relative space-y-1">
+                              {projectMilestones
+                                .sort((a, b) => {
+                                  const dateA = new Date(a.targetDate || 0).getTime();
+                                  const dateB = new Date(b.targetDate || 0).getTime();
+                                  return dateA - dateB;
+                                })
+                                .map((ms) => {
+                                  const msComplete = ms.status === "Complete" || ms.status === "Completed";
+                                  const msInProgress = ms.status === "In Progress";
+                                  const msNotStarted = !msComplete && !msInProgress;
+                                  const isLate = msComplete && ms.completionDate && ms.targetDate && new Date(ms.completionDate) > new Date(ms.targetDate);
+                                  const nodeColor = msComplete ? "bg-chart-2" : msInProgress ? "bg-chart-3" : "bg-muted-foreground/30";
+                                  return (
+                                    <div key={ms.id} className="flex items-start gap-3">
+                                      <div className="flex flex-col items-center">
+                                        <div className={`h-5 w-5 rounded-full ${nodeColor} flex items-center justify-center mt-0.5 ring-2 ring-background`}>
+                                          {msComplete ? (
+                                            <CheckCircle2 className="h-3 w-3 text-white" />
+                                          ) : msInProgress ? (
+                                            <Loader2 className="h-3 w-3 text-white animate-spin" />
+                                          ) : (
+                                            <Circle className="h-3 w-3" />
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className={`flex-1 p-2.5 rounded-lg border ${ms.riskFlag ? "border-destructive/50 bg-destructive/5" : "border-border"}`}>
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <p className={`text-sm font-medium ${isLate ? "text-destructive" : ""}`}>{ms.name}</p>
+                                              {ms.riskFlag && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
+                                              {isLate && <Badge variant="destructive" className="text-[9px] py-0">Late</Badge>}
+                                            </div>
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                                              Target: {formatDate(ms.targetDate) || "None"}
+                                              {ms.completionDate && ` • Completed: ${formatDate(ms.completionDate)}`}
+                                            </p>
+                                          </div>
+                                          <Badge variant="secondary" className="text-[10px] shrink-0">{ms.category || ms.status}</Badge>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                );
+              })()}
+
+            <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Send Project Report</DialogTitle>
+                </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label>Select Recipient</Label>
