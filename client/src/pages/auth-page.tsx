@@ -148,10 +148,8 @@ function GoogleSignInButton() {
             body: JSON.stringify({ credential: response.credential }),
           });
           const data = await res.json();
-          if (data.accessToken) {
-            localStorage.setItem("auth_token", data.accessToken);
-            localStorage.setItem("accessToken", data.accessToken);
-            localStorage.setItem("user", JSON.stringify(data.user));
+          if (data.accessToken || res.ok) {
+            // Auth handled via httpOnly cookie set by backend
             setLocation("/dashboard");
           } else if (data.error) {
             toast({ title: "Sign-in failed", description: data.error, variant: "destructive" });
@@ -209,8 +207,7 @@ function LoginForm() {
   // MFA state - tracks whether we're waiting for MFA verification
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaCode, setMfaCode] = useState("");  // User's entered MFA code
-  const [debugCode, setDebugCode] = useState<string | null>(null);  // Code from backend (for debugging)
-  
+
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -236,20 +233,10 @@ function LoginForm() {
       });
       const data = await res.json();
       
-      // Check response - backend returns MFA required or JWT
+      // Check response - backend returns MFA required
       if (data.mfaRequired) {
-        // MFA required - show MFA input screen
-        // In debug/dev mode, backend returns the code directly when email fails
-        if (data.mfaCode) {
-          setDebugCode(data.mfaCode);
-        }
         setMfaRequired(true);
-      } else if (data.accessToken) {
-        // No MFA required (shouldn't happen with current backend config)
-        localStorage.setItem("auth_token", data.accessToken);
-        setLocation("/");
       } else {
-        // Login failed - show error toast
         toast({ title: "Error", description: data.error || "Login failed", variant: "destructive" });
       }
     } catch {
@@ -281,16 +268,12 @@ function LoginForm() {
         body: JSON.stringify({ username, code: mfaCode }),
       });
       const data = await res.json();
-      
-      if (data.accessToken) {
-        // MFA verified - store JWT
-        localStorage.setItem("auth_token", data.accessToken);
-        // Update React Query cache with user data and invalidate to refresh
-        queryClient.setQueryData(["/api/user"], data.user);
+
+      if (res.ok) {
+        // Auth handled via httpOnly cookie set by backend
         queryClient.invalidateQueries();
         setLocation("/dashboard");
       } else {
-        // MFA verification failed
         toast({ title: "Error", description: data.error || "Invalid code", variant: "destructive" });
       }
     } catch {
@@ -312,15 +295,6 @@ function LoginForm() {
           </p>
         </div>
         
-        {/* Debug display: shows MFA code when email sending fails */}
-        {/* In production, user would receive code via email */}
-        {debugCode && (
-          <div className="p-3 rounded-md bg-muted text-sm text-center">
-            <p className="font-medium mb-1">Debug - MFA Code:</p>
-            <p className="text-2xl font-bold tracking-widest">{debugCode}</p>
-          </div>
-        )}
-        
         {/* 6-digit numeric code input */}
         <div className="space-y-2">
           <Label htmlFor="mfa-code">6-Digit Code</Label>
@@ -331,7 +305,6 @@ function LoginForm() {
             pattern="[0-9]{6}"
             maxLength={6}
             value={mfaCode}
-            // Strip non-digits and limit to 6 characters
             onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
             placeholder="000000"
             className="text-center text-2xl tracking-widest font-mono"
@@ -345,8 +318,7 @@ function LoginForm() {
         <div className="text-center">
           <button
             type="button"
-            // Allow user to go back and retry credentials if needed
-            onClick={() => { setMfaRequired(false); setMfaCode(""); setDebugCode(null); }}
+            onClick={() => { setMfaRequired(false); setMfaCode(""); }}
             className="text-sm text-muted-foreground hover:text-primary"
           >
             Back to login
