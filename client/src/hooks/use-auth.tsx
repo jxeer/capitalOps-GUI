@@ -173,7 +173,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      clearAuthCookies();
       try {
         await fetch(`${API_BASE}/api/v1/auth/logout`, {
           method: "POST",
@@ -182,6 +181,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Ignore errors
       }
+      // Force-clear the httpOnly cookie client-side too
+      document.cookie = "capitalops_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
     },
     onSuccess: () => {
       queryClient.clear();
