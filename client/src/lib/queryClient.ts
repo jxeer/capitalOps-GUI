@@ -20,7 +20,6 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { uploadToS3 } from "./s3";
 
 const API_BASE = (import.meta.env as any).VITE_BACKEND_URL || "";
-const API_KEY = (import.meta.env as any).VITE_COMPAT_API_KEY || "";
 
 const LOGOUT_URL = `${API_BASE}/api/v1/auth/logout`;
 
@@ -69,7 +68,6 @@ export async function apiRequest(
   data?: unknown | undefined,
 ): Promise<Response> {
   const headers: Record<string, string> = data ? { "Content-Type": "application/json" } : {};
-  if (API_KEY) headers["X-API-Key"] = API_KEY;
   const fullUrl = API_BASE + url;
   const res = await fetch(fullUrl, {
     method,
@@ -102,7 +100,6 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const headers: Record<string, string> = {};
-    if (API_KEY) headers["X-API-Key"] = API_KEY;
     const fullUrl = API_BASE + queryKey.join("/");
     const res = await fetch(fullUrl, {
       credentials: "include",

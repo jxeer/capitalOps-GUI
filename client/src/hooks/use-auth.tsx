@@ -21,14 +21,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
 const API_BASE = (import.meta.env as any).VITE_BACKEND_URL || "";
-const API_KEY = (import.meta.env as any).VITE_COMPAT_API_KEY || "";
 
-/**
- * Build headers for authenticated API requests.
- */
 function getAuthHeaders() {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (API_KEY) headers["X-API-Key"] = API_KEY;
   return headers;
 }
 

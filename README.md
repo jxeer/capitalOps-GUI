@@ -103,9 +103,6 @@ Create a `.env` file with:
 # Backend connection
 BACKEND_URL=http://localhost:3001
 
-# API authentication
-COMPAT_API_KEY=change-me-in-production
-
 # Session management
 SESSION_SECRET=change-me-in-production
 
@@ -116,6 +113,13 @@ GOOGLE_CLIENT_SECRET=
 # Frontend S3 upload (optional)
 VITE_AWS_BUCKET_URL=http://localhost:3001
 ```
+
+**Important:** The compat API key (`COMPAT_API_KEY`) must only be configured
+server-side in the Express proxy (`server/.env`) or Railway environment
+variables. It must **never** be exposed to the browser via `VITE_COMPAT_API_KEY`
+or any other `VITE_*` prefix. The Express proxy injects `X-API-Key` on behalf
+of authenticated requests — frontend code authenticates via httpOnly JWT
+cookies only.
 
 ### Running the Flask Backend (Optional)
 
