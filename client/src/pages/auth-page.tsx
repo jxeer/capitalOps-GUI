@@ -265,15 +265,19 @@ function LoginForm() {
       const res = await fetch(`${API_BASE_URL}/api/v1/auth/login/verify-mfa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ username, code: mfaCode }),
       });
+      console.log("MFA verify response:", res.status, res.ok);
       const data = await res.json();
+      console.log("MFA verify data:", data);
 
       if (res.ok) {
         // Auth handled via httpOnly cookie set by backend
         queryClient.invalidateQueries();
         setLocation("/dashboard");
       } else {
+        console.error("MFA verify failed:", res.status, data);
         toast({ title: "Error", description: data.error || "Invalid code", variant: "destructive" });
       }
     } catch {
