@@ -275,7 +275,7 @@ function LoginForm() {
       if (res.ok) {
         // Auth handled via httpOnly cookie set by backend
         queryClient.invalidateQueries();
-        setLocation("/dashboard");
+        window.location.href = "/dashboard";
       } else {
         console.error("MFA verify failed:", res.status, data);
         toast({ title: "Error", description: data.error || "Invalid code", variant: "destructive" });
