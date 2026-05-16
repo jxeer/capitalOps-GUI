@@ -10,6 +10,7 @@ import { SiGoogle } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { API_BASE_URL } from "@/lib/config";
 import { queryClient } from "@/lib/queryClient";
+import { setAccessToken } from "@/lib/auth-token";
 
 export default function AuthPage() {
   const { user } = useAuth();
@@ -272,8 +273,9 @@ function LoginForm() {
       const data = await res.json();
       console.log("MFA verify data:", data);
 
-      if (res.ok) {
-        // Auth handled via httpOnly cookie set by backend
+      if (res.ok && data.accessToken) {
+        // Store JWT in sessionStorage for Bearer token auth
+        setAccessToken(data.accessToken);
         queryClient.invalidateQueries();
         window.location.href = "/dashboard";
       } else {

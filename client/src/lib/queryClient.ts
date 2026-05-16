@@ -5,27 +5,23 @@
  * for all data fetching operations in the application.
  *
  * Security:
- * - Auth tokens are stored in httpOnly cookies (set by backend on login)
- * - Browser sends cookies automatically with credentials: "include"
- * - No localStorage or JavaScript-accessible token storage
+ * - Auth tokens are stored in sessionStorage (accessible to JavaScript)
+ * - Token is sent as Authorization: Bearer header on every API request
  * - 401 responses trigger logout and redirect to /auth
  *
  * Approach:
- * - apiRequest() - Cookie-based fetch with 401 handling
+ * - apiRequest() - Bearer token fetch with 401 handling
  * - getQueryFn() - Creates query functions with 401 handling
  * - queryClient - Global TanStack Query instance with caching and retry configuration
  */
 
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { uploadToS3 } from "./s3";
+import { clearAccessToken, getAuthHeader } from "./auth-token";
 
 const API_BASE = (import.meta.env as any).VITE_BACKEND_URL || "";
 
 const LOGOUT_URL = `${API_BASE}/api/v1/auth/logout`;
-
-function clearAuthCookies(): void {
-  document.cookie = "capitalops_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-}
 
 /**
  * Throw error if response status is not OK (2xx).
@@ -39,14 +35,15 @@ async function throwIfResNotOk(res: Response) {
 }
 
 /**
- * Handle 401 response by clearing cookies and redirecting to /auth.
+ * Handle 401 response by clearing token and redirecting to /auth.
  */
 async function handleUnauthorized(): Promise<void> {
-  clearAuthCookies();
+  clearAccessToken();
   try {
+    const headers = getAuthHeader();
     await fetch(LOGOUT_URL, {
       method: "POST",
-      credentials: "include",
+      headers,
     });
   } catch {
     // Ignore logout errors — we're redirecting anyway
@@ -55,7 +52,7 @@ async function handleUnauthorized(): Promise<void> {
 }
 
 /**
- * Makes HTTP request to API with cookie-based auth.
+ * Makes HTTP request to API with Bearer token auth.
  *
  * @param method - HTTP method (GET, POST, PUT, DELETE, PATCH)
  * @param url - API endpoint URL
@@ -67,13 +64,15 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const headers: Record<string, string> = data ? { "Content-Type": "application/json" } : {};
+  const headers: Record<string, string> = {
+    ...getAuthHeader(),
+    ...(data ? { "Content-Type": "application/json" } : {}),
+  };
   const fullUrl = API_BASE + url;
   const res = await fetch(fullUrl, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
   });
 
   if (res.status === 401) {
@@ -92,22 +91,21 @@ type UnauthorizedBehavior = "returnNull" | "throw";
  * Creates TanStack Query function factory with authentication handling
  *
  * @param options.on401 - Behavior when 401 (unauthorized) response received
- * @returns QueryFunction that fetches data with cookie auth and handles auth errors
+ * @returns QueryFunction that fetches data with Bearer token auth and handles auth errors
  */
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const headers: Record<string, string> = {};
+    const headers = getAuthHeader();
     const fullUrl = API_BASE + queryKey.join("/");
     const res = await fetch(fullUrl, {
-      credentials: "include",
       headers,
     });
 
     if (res.status === 401) {
-      clearAuthCookies();
+      clearAccessToken();
       if (unauthorizedBehavior === "returnNull") {
         return null;
       }

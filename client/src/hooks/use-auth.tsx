@@ -2,7 +2,7 @@
  * use-auth.tsx - Frontend Authentication Hook
  *
  * Provides authentication state and actions throughout the React application.
- * Auth tokens are stored in httpOnly cookies — no localStorage.
+ * Auth tokens are stored in sessionStorage and sent as Bearer tokens.
  *
  * IMPORTANT: This file uses the OLD /api/login endpoint (compat layer).
  * The NEW /api/v1/auth/login endpoint is used directly in auth-page.tsx
@@ -10,29 +10,19 @@
  *
  * AUTHENTICATION FLOW:
  * 1. User credentials sent to /api/login
- * 2. Server sets httpOnly cookie on response
- * 3. AuthContext provides user state to entire app
- * 4. All requests use credentials: "include" to send cookie automatically
+ * 2. Server returns JWT in response body (accessToken field)
+ * 3. JWT stored in sessionStorage and sent as Authorization: Bearer header
+ * 4. AuthContext provides user state to entire app
+ * 5. All requests use Authorization: Bearer <token> header
  */
 
 import { createContext, useContext, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { getAuthHeader, clearAccessToken } from "@/lib/auth-token";
 
 const API_BASE = (import.meta.env as any).VITE_BACKEND_URL || "";
-
-function getAuthHeaders() {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  return headers;
-}
-
-/**
- * Clear auth cookies.
- */
-function clearAuthCookies(): void {
-  document.cookie = "capitalops_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-}
 
 /**
  * User data type returned from authenticated endpoints.
@@ -91,55 +81,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  /**
-   * Query to fetch current user from /api/user endpoint.
-   * Uses httpOnly cookie for auth — credentials: "include" sends cookie automatically.
-   */
-  const { data: user, isLoading } = useQuery<AuthUser | null>({
-    queryKey: ["/api/user"],
-    queryFn: async () => {
-      const headers = getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/user`, {
-        headers,
-        credentials: "include",
-      });
-      if (res.status === 401) {
-        clearAuthCookies();
-        return null;
-      }
-      if (!res.ok) throw new Error("Failed to fetch user");
-      return res.json();
-    },
-    staleTime: Infinity,
-    retry: false,
-  });
+/**
+    * Query to fetch current user from /api/user endpoint.
+    * Uses Bearer token from sessionStorage — Authorization header.
+    */
+   const { data: user, isLoading } = useQuery<AuthUser | null>({
+     queryKey: ["/api/user"],
+     queryFn: async () => {
+       const headers = { ...getAuthHeader(), "Content-Type": "application/json" };
+       const res = await fetch(`${API_BASE}/api/user`, {
+         headers,
+       });
+       if (res.status === 401) {
+         clearAccessToken();
+         return null;
+       }
+       if (!res.ok) throw new Error("Failed to fetch user");
+       return res.json();
+     },
+     staleTime: Infinity,
+     retry: false,
+   });
 
-  /**
-   * Login mutation (DEPRECATED — does not support MFA)
-   */
-  const loginMutation = useMutation({
-    mutationFn: async ({ username, password }: { username: string; password: string }) => {
-      const headers = getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/login`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ username, password }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`${res.status}: ${text}`);
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries();
-      setLocation("/dashboard");
-    },
-    onError: (err: Error) => {
-      toast({ title: "Login failed", description: err.message, variant: "destructive" });
-    },
-  });
+/**
+    * Login mutation (DEPRECATED — does not support MFA)
+    */
+   const loginMutation = useMutation({
+     mutationFn: async ({ username, password }: { username: string; password: string }) => {
+       const headers = { "Content-Type": "application/json" };
+       const res = await fetch(`${API_BASE}/api/login`, {
+         method: "POST",
+         headers,
+         body: JSON.stringify({ username, password }),
+       });
+       if (!res.ok) {
+         const text = await res.text();
+         throw new Error(`${res.status}: ${text}`);
+       }
+       return res.json();
+     },
+     onSuccess: (data) => {
+       if (data.accessToken) {
+         import("@/lib/auth-token").then(m => m.setAccessToken(data.accessToken));
+       }
+       queryClient.invalidateQueries();
+       setLocation("/dashboard");
+     },
+     onError: (err: Error) => {
+       toast({ title: "Login failed", description: err.message, variant: "destructive" });
+     },
+   });
 
   /**
    * Register mutation
@@ -168,27 +159,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  /**
-   * Logout mutation — clears cookies and redirects.
-   */
-  const logoutMutation = useMutation({
-    mutationFn: async () => {
-      try {
-        await fetch(`${API_BASE}/api/v1/auth/logout`, {
-          method: "POST",
-          credentials: "include",
-        });
-      } catch {
-        // Ignore errors
-      }
-      // Force-clear the httpOnly cookie client-side too
-      document.cookie = "capitalops_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-    },
-    onSuccess: () => {
-      queryClient.clear();
-      window.location.href = "/auth";
-    },
-  });
+/**
+    * Logout mutation — clears token and redirects.
+    */
+   const logoutMutation = useMutation({
+     mutationFn: async () => {
+       try {
+         await fetch(`${API_BASE}/api/v1/auth/logout`, {
+           method: "POST",
+           headers: getAuthHeader(),
+         });
+       } catch {
+         // Ignore errors
+       }
+       clearAccessToken();
+     },
+     onSuccess: () => {
+       queryClient.clear();
+       window.location.href = "/auth";
+     },
+   });
 
   const login = async (username: string, password: string) => {
     await loginMutation.mutateAsync({ username, password });

@@ -15,7 +15,7 @@
  * 4. URL is stored in user record or asset record
  *
  * SECURITY:
- * - Requires authentication via httpOnly cookie (credentials: "include")
+ * - Requires authentication via Bearer token (Authorization header)
  * - File type should be validated client-side before upload
  * - File size limits enforced by backend
  *
@@ -23,6 +23,8 @@
  * Despite the filename "s3.ts", actual storage backend is abstracted.
  * The backend may use S3 or base64 fallback depending on AWS configuration.
  */
+
+import { getAuthHeader } from "./auth-token";
 
 const API_BASE = (import.meta.env as any).VITE_BACKEND_URL || "";
 
@@ -59,12 +61,12 @@ export async function uploadToS3(
 
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
+          ...getAuthHeader(),
         };
 
         const res = await fetch(`${API_BASE}/api/upload`, {
           method: "POST",
           headers,
-          credentials: "include",
           body: JSON.stringify({ imageData: base64, name: file.name }),
         });
 
