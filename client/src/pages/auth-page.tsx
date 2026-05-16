@@ -266,20 +266,15 @@ function LoginForm() {
       const res = await fetch(`${API_BASE_URL}/api/v1/auth/login/verify-mfa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ username, code: mfaCode }),
       });
-      console.log("MFA verify response:", res.status, res.ok);
       const data = await res.json();
-      console.log("MFA verify data:", data);
 
       if (res.ok && data.accessToken) {
-        // Store JWT in sessionStorage for Bearer token auth
         setAccessToken(data.accessToken);
         queryClient.invalidateQueries();
         window.location.href = "/dashboard";
       } else {
-        console.error("MFA verify failed:", res.status, data);
         toast({ title: "Error", description: data.error || "Invalid code", variant: "destructive" });
       }
     } catch {
