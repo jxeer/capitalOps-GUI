@@ -50,6 +50,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDate } from "@/lib/formatters";
+import { getAuthHeader } from "@/lib/auth-token";
 
 interface PermitEvent {
   id: number;
@@ -128,9 +129,25 @@ export default function EntitlementPage() {
 
   const { data: records, isLoading } = useQuery<EntitlementRecord[]>({
     queryKey: ["/api/v1/entitlement/"],
+    queryFn: async () => {
+      const headers = { ...getAuthHeader(), "Content-Type": "application/json" };
+      const res = await fetch(`${(import.meta.env as any).VITE_BACKEND_URL}/api/v1/entitlement/`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch entitlements");
+      const data = await res.json();
+      return data.entitlement_records ?? [];
+    },
   });
 
-  const { data: projects } = useQuery<any[]>({ queryKey: ["/api/projects"] });
+  const { data: projects } = useQuery<any[]>({
+    queryKey: ["/api/projects"],
+    queryFn: async () => {
+      const headers = { ...getAuthHeader(), "Content-Type": "application/json" };
+      const res = await fetch(`${(import.meta.env as any).VITE_BACKEND_URL}/api/projects`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch projects");
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data.projects ?? []);
+    },
+  });
 
   const filteredRecords = records?.filter((r) => {
     if (statusFilter === "all") return true;
