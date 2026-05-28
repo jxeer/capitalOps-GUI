@@ -17,6 +17,24 @@ import passport from "passport";
 // Backend URL from environment - proxies /api/* routes to Flask backend
 const BACKEND_URL = process.env.BACKEND_URL || "";
 
+const PATH_MAP: Record<string, string> = {
+  "/api/projects":          "/api/v1/execution/projects",
+  "/api/assets":            "/api/v1/execution/assets",
+  "/api/milestones":        "/api/v1/execution/milestones",
+  "/api/deals":             "/api/v1/capital/deals",
+  "/api/investors":         "/api/v1/capital/investors",
+  "/api/allocations":       "/api/v1/capital/allocations",
+  "/api/vendors":           "/api/v1/vendor/vendors",
+  "/api/work-orders":       "/api/v1/vendor/work-orders",
+  "/api/risk-flags":        "/api/v1/execution/risk-flags",
+  "/api/dashboard/stats":   "/api/v1/dashboard/stats",
+  "/api/portfolios":        "/api/v1/capital/portfolios",
+};
+
+function translatePath(path: string): string {
+  return PATH_MAP[path] ?? path;
+}
+
 // Proxy request to Flask backend and return result
 // Falls back to local storage if backend unavailable
 async function proxyToBackend(path: string, method: string, body?: unknown, isFormData?: boolean): Promise<{ ok: boolean; status: number; data: unknown }> {
@@ -67,7 +85,7 @@ async function withBackendFallback(
   res: Response,
   localHandler: () => Promise<unknown>
 ) {
-  const backendPath = req.originalUrl;
+  const backendPath = translatePath(req.originalUrl);
   const result = await proxyToBackend(backendPath, req.method, req.body);
 
   if (result.ok) {
@@ -107,7 +125,7 @@ async function withMergedList<T extends { id: string }>(
   res: Response,
   getLocal: () => Promise<T[]>
 ) {
-  const backendPath = req.originalUrl;
+  const backendPath = translatePath(req.originalUrl);
   const result = await proxyToBackend(backendPath, "GET");
   const user = getUserFromRequest(req);
 
@@ -334,7 +352,6 @@ export async function registerRoutes(
     await withBackendFallback(req, res, async () => {
       const stats = await storage.getDashboardStats();
       const user = getUserFromRequest(req);
-      // Filter stats for non-admin users to show empty values
       const admin = await isAdmin(user?.id);
       if (!admin) {
         res.json({
@@ -354,12 +371,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/portfolios", async (req, res) => {
-    await withBackendFallback(req, res, async () => {
-      const portfolios = await storage.getPortfolios();
-      const user = getUserFromRequest(req);
-      const filtered = await filterSeedData(portfolios, user?.id);
-      res.json(filtered);
-    });
+    await withMergedList(req, res, () => storage.getPortfolios());
   });
 
   // Assets
