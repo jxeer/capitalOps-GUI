@@ -3,6 +3,11 @@
 // All routes follow the pattern: try backend first, use local storage if unavailable
 
 import type { Express, Request, Response, NextFunction } from "express";
+import { config as dotenvConfig } from "dotenv";
+
+// Load .env file early so BACKEND_URL and COMPAT_API_KEY are available
+dotenvConfig();
+
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { log } from "./index";
@@ -18,7 +23,7 @@ import passport from "passport";
 const BACKEND_URL = process.env.BACKEND_URL || "";
 
 const PATH_MAP: Record<string, string> = {
-  "/api/projects":          "/api/v1/execution/projects",
+  "/api/projects":          "/api/projects",
   "/api/assets":            "/api/v1/execution/assets",
   "/api/milestones":        "/api/v1/execution/milestones",
   "/api/deals":             "/api/v1/capital/deals",
@@ -37,12 +42,13 @@ function translatePath(path: string): string {
 
 // Proxy request to Flask backend and return result
 // Falls back to local storage if backend unavailable
-async function proxyToBackend(path: string, method: string, body?: unknown, isFormData?: boolean): Promise<{ ok: boolean; status: number; data: unknown }> {
+async function proxyToBackend(path: string, method: string, body: unknown, isFormData: boolean, req: Request): Promise<{ ok: boolean; status: number; data: unknown }> {
   // If no backend URL configured, use local storage
   if (!BACKEND_URL) return { ok: false, status: 0, data: null };
 
   try {
     const url = `${BACKEND_URL}${path}`;
+    log(`[proxy] ${method} ${url}`, "proxy");
     const headers: Record<string, string> = {
       "Accept": "application/json",
     };
@@ -50,7 +56,12 @@ async function proxyToBackend(path: string, method: string, body?: unknown, isFo
     if (process.env.COMPAT_API_KEY) {
       headers["X-API-Key"] = process.env.COMPAT_API_KEY;
     }
-    
+    // Forward Authorization header from incoming request (Bearer token from sessionStorage)
+    const authHeader = req.headers["authorization"];
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      headers["Authorization"] = authHeader;
+    }
+
     let bodyData: BodyInit | null | undefined = undefined;
     if (body) {
       if (isFormData) {
@@ -62,9 +73,9 @@ async function proxyToBackend(path: string, method: string, body?: unknown, isFo
         headers["Content-Type"] = "application/json";
       }
     }
-    
-    const options: RequestInit = { method, headers, body: bodyData };
-    
+
+const options: RequestInit = { method, headers, body: bodyData };
+
     const response = await fetch(url, options);
     if (response.ok) {
       const data = await response.json();
@@ -86,7 +97,7 @@ async function withBackendFallback(
   localHandler: () => Promise<unknown>
 ) {
   const backendPath = translatePath(req.originalUrl);
-  const result = await proxyToBackend(backendPath, req.method, req.body);
+  const result = await proxyToBackend(backendPath, req.method, req.body, undefined, req);
 
   if (result.ok) {
     log(`Proxied ${req.method} ${backendPath} -> backend (${result.status})`, "proxy");
@@ -126,16 +137,23 @@ async function withMergedList<T extends { id: string }>(
   getLocal: () => Promise<T[]>
 ) {
   const backendPath = translatePath(req.originalUrl);
-  const result = await proxyToBackend(backendPath, "GET");
+  const result = await proxyToBackend(backendPath, "GET", undefined, undefined, req);
   const user = getUserFromRequest(req);
 
-  if (result.ok && Array.isArray(result.data)) {
+  let responseData = result.data;
+  if (result.ok && responseData && typeof responseData === "object" && !Array.isArray(responseData)) {
+    const keys = Object.keys(responseData as object);
+    if (keys.length === 1 && Array.isArray((responseData as Record<string, unknown>)[keys[0]])) {
+      responseData = (responseData as Record<string, unknown>)[keys[0]];
+    }
+  }
+  if (result.ok && Array.isArray(responseData)) {
     log(`Proxied GET ${backendPath} -> backend (${result.status})`, "proxy");
     const localItems = await getLocal();
-    const backendIds = new Set((result.data as T[]).map(item => item.id));
+    const backendIds = new Set((responseData as T[]).map(item => item.id));
     // Include seed items not covered by backend + any user-created local items
     const localNotInBackend = localItems.filter(item => !backendIds.has(item.id));
-    const merged = [...(result.data as T[]), ...localNotInBackend];
+    const merged = [...(responseData as T[]), ...localNotInBackend];
     // Filter seed data for non-admin users
     const filtered = await filterSeedData(merged, user?.id);
     return res.json(filtered);
