@@ -159,7 +159,7 @@ export default function Assets() {
    */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, portfolioId: 1, squareFootage: Number(form.squareFootage) || 0, location: location || undefined, media: mediaPreviews };
+    const payload = { ...form, squareFootage: Number(form.squareFootage) || 0, location: typeof location === "object" && location !== null ? (location as any).address || (location as any).formatted_address || String(location) : location || undefined, media: mediaPreviews };
     if (editing) { updateMutation.mutate({ id: editing.id, data: payload }); } else { createMutation.mutate(payload); }
   };
 
