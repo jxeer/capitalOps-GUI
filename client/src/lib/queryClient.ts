@@ -80,7 +80,9 @@ export async function apiRequest(
     ...(data ? { "Content-Type": "application/json" } : {}),
     ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
   };
-  const fullUrl = buildUrl(path);
+  const fullUrl = BACKEND_URL
+      ? BACKEND_URL.replace(/\/$/, "") + path
+      : path;
   const res = await fetch(fullUrl, {
     method,
     headers,
@@ -115,7 +117,9 @@ export const getQueryFn: <T>(options: {
       ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
     };
     const path = queryKey[0] as string;
-    const fullUrl = buildUrl(path);
+    const fullUrl = BACKEND_URL
+      ? BACKEND_URL.replace(/\/$/, "") + path
+      : path;
     const res = await fetch(fullUrl, {
       headers,
     });
