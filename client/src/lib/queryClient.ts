@@ -19,9 +19,20 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { uploadToS3 } from "./s3";
 import { clearAccessToken, getAuthHeader } from "./auth-token";
 
-const API_BASE = (import.meta.env as any).VITE_BACKEND_URL || "";
+const BACKEND_URL = (import.meta.env as any).VITE_BACKEND_URL || "";
+const API_KEY = (import.meta.env as any).VITE_COMPAT_API_KEY || "";
 
-const LOGOUT_URL = `${API_BASE}/api/v1/auth/logout`;
+const LOGOUT_URL = `${BACKEND_URL}/api/v1/auth/logout`;
+
+/**
+ * Build full URL from path, prepending BACKEND_URL for /api/* routes.
+ */
+function buildUrl(path: string): string {
+  if (path.startsWith("/api/")) {
+    return `${BACKEND_URL}${path}`;
+  }
+  return path;
+}
 
 /**
  * Throw error if response status is not OK (2xx).
@@ -55,20 +66,21 @@ async function handleUnauthorized(): Promise<void> {
  * Makes HTTP request to API with Bearer token auth.
  *
  * @param method - HTTP method (GET, POST, PUT, DELETE, PATCH)
- * @param url - API endpoint URL
+ * @param path - API endpoint path (e.g. /api/projects)
  * @param data - Optional request body for POST/PUT/PATCH
  * @returns Promise that resolves to Response object
  */
 export async function apiRequest(
   method: string,
-  url: string,
+  path: string,
   data?: unknown | undefined,
 ): Promise<Response> {
   const headers: Record<string, string> = {
     ...getAuthHeader(),
     ...(data ? { "Content-Type": "application/json" } : {}),
+    ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
   };
-  const fullUrl = API_BASE + url;
+  const fullUrl = buildUrl(path);
   const res = await fetch(fullUrl, {
     method,
     headers,
@@ -98,8 +110,12 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const headers = getAuthHeader();
-    const fullUrl = API_BASE + queryKey.join("/");
+    const headers: Record<string, string> = {
+      ...getAuthHeader(),
+      ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
+    };
+    const path = queryKey[0] as string;
+    const fullUrl = buildUrl(path);
     const res = await fetch(fullUrl, {
       headers,
     });
