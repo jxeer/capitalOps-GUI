@@ -23,6 +23,7 @@ import { useLocation } from "wouter";
 import { getAuthHeader, clearAccessToken } from "@/lib/auth-token";
 
 const API_BASE = (import.meta.env as any).VITE_BACKEND_URL || "";
+const API_KEY = (import.meta.env as any).VITE_COMPAT_API_KEY || "";
 
 /**
  * User data type returned from authenticated endpoints.
@@ -137,7 +138,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const registerMutation = useMutation({
     mutationFn: async ({ username, password, email }: { username: string; password: string; email: string }) => {
-      const headers = { ...getAuthHeader(), "Content-Type": "application/json" };
+      const headers: Record<string, string> = {
+        ...getAuthHeader(),
+        "Content-Type": "application/json",
+        ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
+      };
       const res = await fetch(`${API_BASE}/api/register`, {
         method: "POST",
         headers,
