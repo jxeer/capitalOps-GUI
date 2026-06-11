@@ -137,12 +137,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const registerMutation = useMutation({
     mutationFn: async ({ username, password, email }: { username: string; password: string; email: string }) => {
-      const headers = getAuthHeaders();
+      const headers = { ...getAuthHeader(), "Content-Type": "application/json" };
       const res = await fetch(`${API_BASE}/api/register`, {
         method: "POST",
         headers,
         body: JSON.stringify({ username, password, email }),
-        credentials: "include",
       });
       if (!res.ok) {
         const text = await res.text();
