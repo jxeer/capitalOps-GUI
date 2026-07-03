@@ -237,6 +237,15 @@ function LoginForm() {
       // Check response - backend returns MFA required
       if (data.mfaRequired) {
         setMfaRequired(true);
+        // Non-production fallback: backend includes the MFA code in the
+        // response when email delivery fails, so surface it in a toast.
+        // Production responses never include mfaCode, so this is a no-op there.
+        if (data.mfaCode) {
+          toast({
+            title: "Email delivery unavailable",
+            description: `Your code is ${data.mfaCode}`,
+          });
+        }
       } else {
         toast({ title: "Error", description: data.error || "Login failed", variant: "destructive" });
       }
