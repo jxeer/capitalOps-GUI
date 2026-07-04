@@ -14,16 +14,18 @@
  * - All Connections tab: List of accepted connections with search
  * - Connection Requests tab: Pending incoming/outgoing requests
  * - Messages tab: 1-on-1 conversations with connected users
- * - User discovery search for finding new connections
+ * - Discover tab: server-side user search + send connection requests
  * - CommunicationCenter component for messaging UI
- * 
+ *
  * Related Components:
  * - CommunicationCenter: Full messaging interface
  * - ConnectionRequestList: Request management UI
- * 
+ * - ConnectionRequestButton: Connect/withdraw/accept actions per user
+ *
  * Related Backend Routes:
  * - GET /api/connections - List user's accepted connections
  * - GET /api/connection-pending - List pending requests
+ * - GET /api/users?search= - Discover users (excludes current user)
  * - POST /api/connection-requests - Send connection request
  * - PUT /api/connection-requests/:id - Accept/decline request
  * - GET /api/conversations - List user's conversations
@@ -33,8 +35,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -42,6 +43,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CommunicationCenter } from "@/components/communication-center";
 import { ConnectionRequestList } from "@/components/connection-request-list";
+import { ConnectionRequestButton } from "@/components/connection-request-button";
 import { User, MessageSquare, UserPlus, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { User as UserType } from "@shared/schema";
@@ -56,8 +58,7 @@ import type { User as UserType } from "@shared/schema";
  */
 export default function Connections() {
   const { user, isLoading } = useAuth();
-  const { toast } = useToast();
-  
+
   // Search/filter state
   const [searchTerm, setSearchTerm] = useState("");
   const [discoverTerm, setDiscoverTerm] = useState("");
@@ -75,24 +76,34 @@ export default function Connections() {
     enabled: !!user,
   });
 
-  // Fetch all users for discovery
-  const { data: allUsers, isLoading: allUsersLoading } = useQuery<UserType[]>({
-    queryKey: ["/api/users"],
+  // Fetch users for the Discover tab. The backend's GET /api/users supports
+  // ?search= (matches username/full_name/email, case-insensitive) and always
+  // excludes the current user. discoverTerm is part of the queryKey so typing
+  // a new term triggers a refetch (staleTime is Infinity, so each distinct
+  // term is fetched once and then served from cache). The default queryFn
+  // only reads queryKey[0] as the URL, so a custom queryFn builds the
+  // search-param URL explicitly.
+  const { data: discoveredUsers, isLoading: discoverLoading } = useQuery<UserType[]>({
+    queryKey: ["/api/users", discoverTerm],
+    queryFn: async () => {
+      const term = discoverTerm.trim();
+      const path = term
+        ? `/api/users?search=${encodeURIComponent(term)}`
+        : "/api/users";
+      const res = await apiRequest("GET", path);
+      return res.json();
+    },
     enabled: !!user,
   });
 
-  /**
-   * Handle search form submission
-   * 
-   * TODO: Search endpoint not yet implemented on backend
-   */
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchTerm.trim()) {
-      // Search users via API - TODO: Implement search endpoint
-      toast({ title: "Search not implemented yet", description: "This feature will be added soon" });
-    }
-  };
+  // Connection-state lookups for the Discover tab, so users we're already
+  // linked to don't show a plain "Connect" button. IDs are compared as
+  // strings because /api/users returns string IDs (compat convention) while
+  // /api/connections and /api/connection-pending return numeric IDs.
+  const connectedIds = new Set((connections ?? []).map((c) => String(c.id)));
+  const incomingRequestSenderIds = new Set(
+    (pendingRequests ?? []).map((r) => String(r.senderId))
+  );
 
   // Show nothing while loading
   if (isLoading || (activeTab === "all" && connectionsLoading)) return null;
@@ -137,12 +148,19 @@ export default function Connections() {
             <MessageSquare className="h-4 w-4 mr-2" />
             Messages
           </TabsTrigger>
+
+          {/* Discover tab — find new users to connect with */}
+          <TabsTrigger value="discover">
+            <Search className="h-4 w-4 mr-2" />
+            Discover
+          </TabsTrigger>
         </TabsList>
 
         {/* Tab Content */}
         <TabsContent value="all" className="space-y-4">
-          {/* Search bar */}
-          <form onSubmit={handleSearch} className="flex gap-2">
+          {/* Search bar — filtering happens client-side as you type, so
+              submitting just prevents a page reload */}
+          <form onSubmit={(e) => e.preventDefault()} className="flex gap-2">
             <Input
               placeholder="Search connections..."
               value={searchTerm}
@@ -176,6 +194,58 @@ export default function Connections() {
         <TabsContent value="messages" className="space-y-4">
           {/* Messaging interface */}
           <CommunicationCenter />
+        </TabsContent>
+
+        <TabsContent value="discover" className="space-y-4">
+          {/* Server-side user search — queries /api/users?search= as the
+              user types (see discoveredUsers query above) */}
+          <form onSubmit={(e) => e.preventDefault()} className="flex gap-2">
+            <Input
+              placeholder="Search people by name, username, or email..."
+              value={discoverTerm}
+              onChange={(e) => setDiscoverTerm(e.target.value)}
+              className="flex-1"
+            />
+            <Button type="submit" variant="secondary">
+              <Search className="h-4 w-4" />
+            </Button>
+          </form>
+
+          {/* Discovered users list — mirrors the All Connections card grid */}
+          {discoverLoading ? (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground">Searching...</p>
+            </Card>
+          ) : discoveredUsers && discoveredUsers.length > 0 ? (
+            <div className="grid gap-4">
+              {discoveredUsers.map((u) => (
+                <DiscoverUserCard
+                  key={u.id}
+                  user={u}
+                  currentUserId={String(user?.id ?? "")}
+                  // Derive relationship state so the button renders the right
+                  // action: already connected -> disabled "Connected";
+                  // they sent us a pending request -> accept/decline;
+                  // otherwise -> plain "Connect".
+                  connectionStatus={
+                    connectedIds.has(String(u.id))
+                      ? "connected"
+                      : incomingRequestSenderIds.has(String(u.id))
+                        ? "request_received"
+                        : undefined
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground">
+                {discoverTerm.trim()
+                  ? "No users match your search."
+                  : "No other users found yet."}
+              </p>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
@@ -219,6 +289,65 @@ function ConnectionCard({ user }: { user: UserType }) {
           <MessageSquare className="h-4 w-4 mr-2" />
           Message
         </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * DiscoverUserCard Component
+ *
+ * A single row in the Discover tab: avatar, name/username/role, and a
+ * ConnectionRequestButton for sending a request. Mirrors ConnectionCard's
+ * layout so the tabs look consistent, but swaps the Message action for a
+ * connection action since these users aren't connections yet.
+ *
+ * @param user - Discovered user (safe public fields from /api/users)
+ * @param currentUserId - Authenticated user's ID (string, for the button)
+ * @param connectionStatus - Existing relationship, if any, so the button can
+ *   render "Connected" / accept-decline instead of a fresh "Connect"
+ */
+function DiscoverUserCard({
+  user,
+  currentUserId,
+  connectionStatus,
+}: {
+  user: UserType;
+  currentUserId: string;
+  connectionStatus?: "connected" | "request_sent" | "request_received";
+}) {
+  const avatarFallback = user.username?.substring(0, 2).toUpperCase() || "??";
+
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 p-4">
+        {/* User avatar (same fallback pattern as ConnectionCard) */}
+        {user.profileImage ? (
+          <Avatar className="h-12 w-12">
+            <AvatarImage src={user.profileImage} alt={user.username} />
+            <AvatarFallback>{avatarFallback}</AvatarFallback>
+          </Avatar>
+        ) : (
+          <Avatar className="h-12 w-12 bg-primary text-primary-foreground">
+            <AvatarFallback>{avatarFallback}</AvatarFallback>
+          </Avatar>
+        )}
+
+        {/* Name, username, and role — the safe fields /api/users returns */}
+        <div className="flex-1 min-w-0">
+          <p className="font-medium truncate">{user.fullName || user.username}</p>
+          <p className="text-sm text-muted-foreground truncate">
+            @{user.username}
+            {user.role ? ` · ${user.role.replace(/_/g, " ")}` : ""}
+          </p>
+        </div>
+
+        {/* Connect / Connected / Accept-Decline, based on relationship */}
+        <ConnectionRequestButton
+          userId={currentUserId}
+          targetUserId={String(user.id)}
+          connectionStatus={connectionStatus}
+        />
       </CardContent>
     </Card>
   );
