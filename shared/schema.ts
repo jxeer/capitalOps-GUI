@@ -220,6 +220,13 @@ export const conversationSchema = z.object({
   id: z.string(),
   userId1: z.string(),
   userId2: z.string(),
+  // Participant display names (full_name) with username fallbacks,
+  // provided by the backend so conversation lists can label the other
+  // party without an extra user lookup.
+  user1Name: z.string().nullable().optional(),
+  user1Username: z.string().nullable().optional(),
+  user2Name: z.string().nullable().optional(),
+  user2Username: z.string().nullable().optional(),
   updatedAt: z.string(),
 });
 export type Conversation = z.infer<typeof conversationSchema>;

@@ -214,9 +214,14 @@ export function CommunicationCenter({ targetUserId }: CommunicationCenterProps) 
                 >
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-muted-foreground" />
-                    {/* Show "You" or "Other User" based on who's in the conversation */}
+                    {/* Label each conversation with the OTHER participant's
+                        display name (fullName from the backend, username as
+                        fallback) — previously this rendered a literal
+                        "You"/"Other User" placeholder */}
                     <span className="text-sm font-medium">
-                      {conv.userId1 === user?.id ? "You" : "Other User"}
+                      {String(conv.userId1) === String(user?.id)
+                        ? conv.user2Name || conv.user2Username || "Unknown user"
+                        : conv.user1Name || conv.user1Username || "Unknown user"}
                     </span>
                   </div>
                 </div>

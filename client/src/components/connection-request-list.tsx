@@ -158,13 +158,23 @@ export function ConnectionRequestList({ type = "received" }: ConnectionRequestLi
           <div className="space-y-3">
             {requestsList.map((request: any) => {
               /**
-               * For "sent" mode, sender is the current user.
-               * For "received" mode, sender is the other user (request.senderId).
+               * Show the OTHER party of the request: for received requests
+               * that's the sender; for sent requests it's the receiver.
+               * The backend includes senderName/receiverName (full_name)
+               * with senderUsername/receiverUsername fallbacks, so we never
+               * render a bare numeric ID (the old code assigned
+               * request.senderId — a number — here and displayed nothing).
                */
-              const sender = request.senderId === user?.id 
-                ? user 
-                : request.senderId;
-              
+              const sentByMe = String(request.senderId) === String(user?.id);
+              const displayName = sentByMe
+                ? request.receiverName || request.receiverUsername
+                : request.senderName || request.senderUsername;
+              const initials = (
+                (sentByMe ? request.receiverUsername : request.senderUsername) ||
+                displayName ||
+                "??"
+              ).substring(0, 2).toUpperCase();
+
               return (
                 <div 
                   key={request.id} 
@@ -173,13 +183,13 @@ export function ConnectionRequestList({ type = "received" }: ConnectionRequestLi
                   {/* User info: avatar + name + timestamp */}
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
-                      {/* AvatarFallback shows initials from username */}
+                      {/* AvatarFallback shows initials from the other party */}
                       <AvatarFallback>
-                        {sender?.username?.substring(0, 2).toUpperCase()}
+                        {initials}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="text-sm font-medium">{sender?.username}</p>
+                      <p className="text-sm font-medium">{displayName}</p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(request.createdAt).toLocaleDateString()}
                       </p>
