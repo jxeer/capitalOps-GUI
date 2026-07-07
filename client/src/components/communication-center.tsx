@@ -35,6 +35,10 @@ import type { Message, Conversation } from "@shared/schema";
  */
 interface CommunicationCenterProps {
   targetUserId?: string;
+  /** Called when the user closes targeted mode, so the parent can clear
+      the target (e.g. Connections page resetting its "message this user"
+      state). Without this, targeted mode had no way back to the list. */
+  onClose?: () => void;
 }
 
 /**
@@ -49,30 +53,38 @@ interface CommunicationCenterProps {
  * - messageContent: Current message being typed
  * - conversations: List of user's conversations
  */
-export function CommunicationCenter({ targetUserId }: CommunicationCenterProps) {
+export function CommunicationCenter({ targetUserId, onClose }: CommunicationCenterProps) {
   // Get current user from auth context
   const { user, isLoading: userLoading } = useAuth();
   const { toast } = useToast();
-  
+
   // Currently selected conversation for viewing messages
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  
+
   // Message being composed
   const [messageContent, setMessageContent] = useState("");
-  
-  // User's conversations list
-  const [conversations, setConversations] = useState<Conversation[]>([]);
 
-  // Fetch pending connection requests (for potential new conversations)
-  const { data: pendingRequests } = useQuery({
-    queryKey: ["/api/connection-pending"],
+  // Fetch the user's conversations from the backend. This was previously a
+  // useState([]) that nothing ever populated, so the list was always empty
+  // and targeted mode could never find an existing conversation.
+  const { data: conversations = [] } = useQuery<Conversation[]>({
+    queryKey: ["/api/conversations"],
     enabled: !!user && !userLoading,
   });
 
-  // Fetch messages for selected conversation
-  // Enabled only when conversation is selected
+  // Fetch messages for the selected conversation. Needs a custom queryFn:
+  // the app's default queryFn only uses queryKey[0] as the URL, which
+  // dropped the conversationId — the backend 400s without it, so threads
+  // never loaded.
   const { data: messages } = useQuery<Message[]>({
     queryKey: ["/api/messages", { conversationId: selectedConversation?.id }],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/messages?conversationId=${encodeURIComponent(String(selectedConversation?.id))}`
+      );
+      return res.json();
+    },
     enabled: !!selectedConversation?.id,
     initialData: [],
   });
@@ -96,14 +108,14 @@ export function CommunicationCenter({ targetUserId }: CommunicationCenterProps) 
       // Optimistically update messages cache with new message
       if (selectedConversation?.id) {
         queryClient.setQueryData<Message[]>(
-          ["/api/messages", { conversationId: selectedConversation.id }], 
+          ["/api/messages", { conversationId: selectedConversation.id }],
           (prev) => [...(prev || []), message]
         );
       }
-      // Clear input and close conversation
+      // Clear the input but KEEP the thread open — the old code also
+      // nulled selectedConversation here, closing the chat after every
+      // single message sent.
       setMessageContent("");
-      setSelectedConversation(null);
-      toast({ title: "Message sent" });
     },
     onError: (err: any) => {
       toast({ title: "Failed to send message", description: err.message, variant: "destructive" });
@@ -161,13 +173,28 @@ export function CommunicationCenter({ targetUserId }: CommunicationCenterProps) 
     setSelectedConversation(conversation);
   };
 
+  // Find the existing conversation with the target user (targeted mode).
+  // IDs are compared as strings: the backend sends numeric userId1/userId2
+  // while targetUserId arrives as a string, so strict === never matched.
+  const targetConversation = targetUserId
+    ? conversations.find(
+        (c) =>
+          String(c.userId1) === String(targetUserId) ||
+          String(c.userId2) === String(targetUserId)
+      )
+    : null;
+
+  // In targeted mode, auto-open the conversation once it's known — either
+  // found in the fetched list or just created. Without this, targeted mode
+  // rendered an empty card (the list is hidden and nothing was selected).
+  useEffect(() => {
+    if (targetUserId && targetConversation && !selectedConversation) {
+      setSelectedConversation(targetConversation);
+    }
+  }, [targetUserId, targetConversation, selectedConversation]);
+
   // Show loading spinner while auth is loading
   if (userLoading) return null;
-
-  // Find the "other" user in targeted mode
-  const otherUser = targetUserId
-    ? conversations.find(c => c.userId1 === targetUserId || c.userId2 === targetUserId)
-    : null;
 
   return (
     <Card>
@@ -176,7 +203,16 @@ export function CommunicationCenter({ targetUserId }: CommunicationCenterProps) 
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Messages</h3>
           {targetUserId && (
-            <Button size="sm" variant="ghost" onClick={() => setSelectedConversation(null)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                // Deselect AND tell the parent to clear the target —
+                // otherwise the auto-select effect immediately reopens it.
+                setSelectedConversation(null);
+                onClose?.();
+              }}
+            >
               <X className="h-4 w-4 mr-1" />
               Close
             </Button>
@@ -184,7 +220,7 @@ export function CommunicationCenter({ targetUserId }: CommunicationCenterProps) 
         </div>
 
         {/* === TARGETED MODE: No existing conversation === */}
-        {targetUserId && !selectedConversation && !otherUser && (
+        {targetUserId && !selectedConversation && !targetConversation && (
           <div className="text-center py-8">
             <User className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-50" />
             <p className="text-muted-foreground mb-4">No existing conversation with this user</p>
@@ -236,8 +272,9 @@ export function CommunicationCenter({ targetUserId }: CommunicationCenterProps) 
             {/* Messages scroll area */}
             <div className="flex-1 overflow-y-auto space-y-4 mb-4">
               {messages?.map((msg) => {
-                // Determine if current user sent this message
-                const isMe = msg.senderId === user?.id;
+                // Determine if current user sent this message (string-
+                // normalized: backend IDs are numeric, frontend's are strings)
+                const isMe = String(msg.senderId) === String(user?.id);
                 return (
                   <div
                     key={msg.id}

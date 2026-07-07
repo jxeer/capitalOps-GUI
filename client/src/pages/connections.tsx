@@ -64,6 +64,30 @@ export default function Connections() {
   const [discoverTerm, setDiscoverTerm] = useState("");
   const [activeTab, setActiveTab] = useState("all");
 
+  // When set, the Messages tab opens in targeted mode for this user —
+  // set by the Message button on a connection card, cleared when the
+  // user leaves the Messages tab or closes the targeted view.
+  const [messageTargetId, setMessageTargetId] = useState<string | null>(null);
+
+  /**
+   * Open the Messages tab targeted at a specific connection.
+   * This is the Message button's click handler — previously the button
+   * had NO onClick at all, so clicking it did nothing.
+   */
+  const handleOpenMessages = (targetId: string) => {
+    setMessageTargetId(String(targetId));
+    setActiveTab("messages");
+  };
+
+  /**
+   * Tab switcher — clears the message target when navigating away from
+   * Messages so a stale target doesn't hijack the next visit to the tab.
+   */
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (tab !== "messages") setMessageTargetId(null);
+  };
+
   // Fetch user's accepted connections
   const { data: connections, isLoading: connectionsLoading } = useQuery<UserType[]>({
     queryKey: ["/api/connections"],
@@ -126,8 +150,11 @@ export default function Connections() {
         </div>
       </div>
 
-      {/* Tabbed interface */}
-      <Tabs defaultValue="all" className="space-y-4" onValueChange={setActiveTab}>
+      {/* Tabbed interface — controlled (value + onValueChange) so the
+          Message button can programmatically switch to the Messages tab;
+          with only defaultValue the tab state was internal to Radix and
+          couldn't be driven from code */}
+      <Tabs value={activeTab} className="space-y-4" onValueChange={handleTabChange}>
         <TabsList>
           {/* All Connections tab with count badge */}
           <TabsTrigger value="all">
@@ -176,7 +203,11 @@ export default function Connections() {
           {filteredConnections && filteredConnections.length > 0 ? (
             <div className="grid gap-4">
               {filteredConnections.map((connection) => (
-                <ConnectionCard key={connection.id} user={connection} />
+                <ConnectionCard
+                  key={connection.id}
+                  user={connection}
+                  onMessage={handleOpenMessages}
+                />
               ))}
             </div>
           ) : (
@@ -192,8 +223,12 @@ export default function Connections() {
         </TabsContent>
 
         <TabsContent value="messages" className="space-y-4">
-          {/* Messaging interface */}
-          <CommunicationCenter />
+          {/* Messaging interface — targeted at a specific user when the
+              Message button on a connection card was clicked */}
+          <CommunicationCenter
+            targetUserId={messageTargetId ?? undefined}
+            onClose={() => setMessageTargetId(null)}
+          />
         </TabsContent>
 
         <TabsContent value="discover" className="space-y-4">
@@ -254,10 +289,19 @@ export default function Connections() {
 
 /**
  * ConnectionCard Component
- * 
+ *
  * Displays a single connection with avatar, name, and quick actions.
+ *
+ * @param onMessage - Called with this user's ID when Message is clicked;
+ *   the parent opens the Messages tab targeted at them.
  */
-function ConnectionCard({ user }: { user: UserType }) {
+function ConnectionCard({
+  user,
+  onMessage,
+}: {
+  user: UserType;
+  onMessage: (targetId: string) => void;
+}) {
   const avatarFallback = user.username?.substring(0, 2).toUpperCase() || "??";
 
   return (
@@ -284,8 +328,8 @@ function ConnectionCard({ user }: { user: UserType }) {
           </p>
         </div>
 
-        {/* Message button */}
-        <Button size="sm" variant="outline">
+        {/* Message button — opens the Messages tab targeted at this user */}
+        <Button size="sm" variant="outline" onClick={() => onMessage(String(user.id))}>
           <MessageSquare className="h-4 w-4 mr-2" />
           Message
         </Button>
