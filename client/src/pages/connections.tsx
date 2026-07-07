@@ -46,7 +46,7 @@ import { ConnectionRequestList } from "@/components/connection-request-list";
 import { ConnectionRequestButton } from "@/components/connection-request-button";
 import { User, MessageSquare, UserPlus, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import type { User as UserType } from "@shared/schema";
+import type { User as UserType, Conversation } from "@shared/schema";
 
 /**
  * Main Connections Page Component
@@ -99,6 +99,19 @@ export default function Connections() {
     queryKey: ["/api/connection-pending"],
     enabled: !!user,
   });
+
+  // Conversations for the Messages-tab unread dot. Same queryKey and
+  // interval as the sidebar and CommunicationCenter — react-query shares
+  // one cache entry and one 5s poll across all observers.
+  const { data: conversations } = useQuery<Conversation[]>({
+    queryKey: ["/api/conversations"],
+    enabled: !!user,
+    refetchInterval: 5000,
+  });
+  const totalUnread = (conversations ?? []).reduce(
+    (sum, c) => sum + (c.unreadCount ?? 0),
+    0
+  );
 
   // Fetch users for the Discover tab. The backend's GET /api/users supports
   // ?search= (matches username/full_name/email, case-insensitive) and always
@@ -170,10 +183,16 @@ export default function Connections() {
             {pendingCount > 0 && <span className="ml-2 bg-primary text-primary-foreground px-2 py-0.5 rounded-full text-xs">{pendingCount}</span>}
           </TabsTrigger>
           
-          {/* Messages tab */}
+          {/* Messages tab — red dot when any conversation has unread messages */}
           <TabsTrigger value="messages">
             <MessageSquare className="h-4 w-4 mr-2" />
             Messages
+            {totalUnread > 0 && (
+              <span
+                className="ml-2 h-2 w-2 rounded-full bg-destructive"
+                data-testid="dot-unread-messages"
+              />
+            )}
           </TabsTrigger>
 
           {/* Discover tab — find new users to connect with */}

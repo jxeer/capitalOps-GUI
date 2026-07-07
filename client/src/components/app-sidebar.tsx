@@ -20,7 +20,9 @@
  */
 
 import { useLocation, Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import type { Conversation } from "@shared/schema";
 
 // Icon imports from lucide-react for navigation items
 import {
@@ -130,6 +132,19 @@ export function AppSidebar() {
   // Get current user from auth context for profile display
   const { user, logout } = useAuth();
 
+  // Total unread messages for the Connections badge. Same queryKey (and
+  // interval) as CommunicationCenter/Connections, so react-query keeps ONE
+  // 5s poll shared across all of them rather than three separate ones.
+  const { data: conversations } = useQuery<Conversation[]>({
+    queryKey: ["/api/conversations"],
+    enabled: !!user,
+    refetchInterval: 5000,
+  });
+  const totalUnread = (conversations ?? []).reduce(
+    (sum, c) => sum + (c.unreadCount ?? 0),
+    0
+  );
+
   /**
    * Render a sidebar group with a label and menu items.
    * 
@@ -161,6 +176,15 @@ export function AppSidebar() {
                   {/* Render the icon component with standard sizing */}
                   <item.icon className="h-4 w-4" />
                   <span>{item.title}</span>
+                  {/* Unread-message count badge on the Connections item */}
+                  {item.title === "Connections" && totalUnread > 0 && (
+                    <span
+                      className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold text-destructive-foreground"
+                      data-testid="badge-unread-messages"
+                    >
+                      {totalUnread}
+                    </span>
+                  )}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

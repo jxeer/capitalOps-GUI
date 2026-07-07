@@ -178,10 +178,20 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
   };
 
   /**
-   * Select a conversation to view its messages
+   * Select a conversation to view its messages.
+   *
+   * Also zeroes the conversation's unreadCount in the cache immediately:
+   * the backend marks messages read during the GET /api/messages this
+   * selection triggers, so the badges would clear on the next 5s poll
+   * anyway — this just removes the visible lag.
    */
   const handleSelectConversation = (conversation: Conversation) => {
     setSelectedConversation(conversation);
+    queryClient.setQueryData<Conversation[]>(["/api/conversations"], (prev) =>
+      prev?.map((c) =>
+        c.id === conversation.id ? { ...c, unreadCount: 0 } : c
+      )
+    );
   };
 
   // Find the existing conversation with the target user (targeted mode).
@@ -200,7 +210,8 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
   // rendered an empty card (the list is hidden and nothing was selected).
   useEffect(() => {
     if (targetUserId && targetConversation && !selectedConversation) {
-      setSelectedConversation(targetConversation);
+      // Same path as a manual click so the unread badge clears too
+      handleSelectConversation(targetConversation);
     }
   }, [targetUserId, targetConversation, selectedConversation]);
 
@@ -270,6 +281,11 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
                         ? conv.user2Name || conv.user2Username || "Unknown user"
                         : conv.user1Name || conv.user1Username || "Unknown user"}
                     </span>
+                    {/* Unread dot — cleared by handleSelectConversation and
+                        server-side once the thread is opened */}
+                    {(conv.unreadCount ?? 0) > 0 && (
+                      <span className="ml-auto h-2 w-2 rounded-full bg-destructive" />
+                    )}
                   </div>
                 </div>
               ))

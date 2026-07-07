@@ -227,6 +227,9 @@ export const conversationSchema = z.object({
   user1Username: z.string().nullable().optional(),
   user2Name: z.string().nullable().optional(),
   user2Username: z.string().nullable().optional(),
+  // Number of messages addressed to the CURRENT USER (the JWT caller) not
+  // yet read — viewer-dependent, computed per request by the backend.
+  unreadCount: z.number().optional(),
   updatedAt: z.string(),
 });
 export type Conversation = z.infer<typeof conversationSchema>;
