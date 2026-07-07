@@ -70,6 +70,9 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
   const { data: conversations = [] } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
     enabled: !!user && !userLoading,
+    // Poll so brand-new threads appear without a reload — the global
+    // staleTime: Infinity would otherwise pin this list for the session
+    refetchInterval: 5000,
   });
 
   // Fetch messages for the selected conversation. Needs a custom queryFn:
@@ -86,6 +89,10 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
       return res.json();
     },
     enabled: !!selectedConversation?.id,
+    // Poll the open thread for new incoming messages; refetchInterval
+    // bypasses staleTime, so this works despite the global Infinity.
+    // Only runs while enabled (a conversation is selected and on screen).
+    refetchInterval: 5000,
     // No initialData here: initialData is written to the cache as real
     // fetched data, and with the app's global staleTime: Infinity it stayed
     // "fresh" forever — the GET never fired and every thread showed an
