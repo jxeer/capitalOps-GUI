@@ -21,6 +21,11 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { getAuthHeader, clearAccessToken } from "@/lib/auth-token";
+// Must be a real import — the `export { queryClient } from ...` re-export at
+// the bottom of this file does NOT create a local binding, so every
+// queryClient.* call here threw a ReferenceError at runtime (logout cleared
+// the token but crashed before the redirect to /auth).
+import { queryClient } from "@/lib/queryClient";
 
 const API_BASE = (import.meta.env as any).VITE_BACKEND_URL || "";
 const API_KEY = (import.meta.env as any).VITE_COMPAT_API_KEY || "";
