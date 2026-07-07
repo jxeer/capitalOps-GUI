@@ -86,7 +86,11 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
       return res.json();
     },
     enabled: !!selectedConversation?.id,
-    initialData: [],
+    // No initialData here: initialData is written to the cache as real
+    // fetched data, and with the app's global staleTime: Infinity it stayed
+    // "fresh" forever — the GET never fired and every thread showed an
+    // empty [] ("No messages yet"). undefined-while-loading is handled by
+    // the `messages?.` render guards below.
   });
 
   /**
