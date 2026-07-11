@@ -394,19 +394,20 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
                     >
                       {/* Message content (may be empty for share-only messages) */}
                       {msg.content && <p className="text-sm">{msg.content}</p>}
-                      {/* Shared-record card. Assets deep-link via
-                          /assets?open=<id> — the assets page fetches that
-                          single asset by id and opens its dialog (a shared
-                          record is NOT in the recipient's list, so it must
-                          be fetched directly). Other types still link to
-                          their list page until the pattern is replicated.
-                          recordName is the backend's send-time snapshot. */}
+                      {/* Shared-record card. Deep-links via
+                          /<type>?open=<id> — each list page fetches that
+                          single record by id and opens its edit dialog (a
+                          shared record is NOT in the recipient's
+                          portfolio-scoped list, so it must be fetched
+                          directly; only the by-id endpoints are
+                          share-aware). recordName is the backend's
+                          send-time snapshot. */}
                       {msg.attachment && (
                         <Link
                           href={
-                            msg.attachment.recordType === "asset"
-                              ? `/assets?open=${msg.attachment.recordId}`
-                              : ATTACHABLE_TYPES[msg.attachment.recordType]?.page ?? "/dashboard"
+                            ATTACHABLE_TYPES[msg.attachment.recordType]
+                              ? `${ATTACHABLE_TYPES[msg.attachment.recordType].page}?open=${msg.attachment.recordId}`
+                              : "/dashboard"
                           }
                           className={`mt-1 flex items-center gap-2 rounded-md border p-2 text-xs transition-colors ${
                             isMe

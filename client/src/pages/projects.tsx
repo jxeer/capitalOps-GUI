@@ -19,7 +19,8 @@
  * - Risk flag detection based on milestone delays
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { FolderKanban, Calendar, User, AlertTriangle, Plus, Trash2, Pencil, TrendingUp, Clock, CheckCircle2, ChevronDown, Send, Circle, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -160,6 +161,40 @@ export default function Projects() {
     setMediaPreviews(project.media || []);
     setOpen(true);
   };
+
+  // Deep-link support: /projects?open=<id> (used by chat attachment cards).
+  // wouter's navigate is aliased — this page already has setLocation state
+  // for the map location field.
+  const search = useSearch();
+  const [, navigate] = useLocation();
+
+  /**
+   * Open a single project by id when arriving with ?open=<id>.
+   *
+   * Fetched directly by id and opened from the FETCHED object — a record
+   * shared with the current user is NOT in their portfolio-scoped
+   * ["/api/projects"] list; only the by-id endpoint is share-aware. 404
+   * (never shared / revoked) shows a toast. The param is cleared with a
+   * history replace so refresh/close doesn't re-trigger. Same pattern as
+   * assets.tsx.
+   */
+  useEffect(() => {
+    const openId = new URLSearchParams(search).get("open");
+    if (!openId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiRequest("GET", `/api/projects/${openId}`);
+        const project: Project = await res.json();
+        if (!cancelled) openEdit(project);
+      } catch {
+        if (!cancelled) toast({ title: "This record isn't available to you", variant: "destructive" });
+      } finally {
+        if (!cancelled) navigate("/projects", { replace: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [search]);
   
   /**
    * Closes dialog and resets all form state

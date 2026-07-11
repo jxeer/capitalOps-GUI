@@ -17,7 +17,8 @@
  * - DELETE /api/vendors/:id - Delete vendor
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Truck, Shield, Star, Plus, Trash2, Pencil, CheckCircle2, XCircle, Clock, Wrench } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -93,6 +94,38 @@ export default function Vendors() {
     setForm({ assetId: v.assetId, name: v.name, type: v.type, coiStatus: v.coiStatus, slaType: v.slaType, performanceScore: String(v.performanceScore) });
     setOpen(true);
   };
+
+  // Deep-link support: /vendors?open=<id> (used by chat attachment cards)
+  const search = useSearch();
+  const [, navigate] = useLocation();
+
+  /**
+   * Open a single vendor by id when arriving with ?open=<id>.
+   *
+   * Fetched directly by id and opened from the FETCHED object — a record
+   * shared with the current user is NOT in their portfolio-scoped
+   * ["/api/vendors"] list; only the by-id endpoint is share-aware. 404
+   * (never shared / revoked) shows a toast. The param is cleared with a
+   * history replace so refresh/close doesn't re-trigger. Same pattern as
+   * assets.tsx.
+   */
+  useEffect(() => {
+    const openId = new URLSearchParams(search).get("open");
+    if (!openId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiRequest("GET", `/api/vendors/${openId}`);
+        const vendor: Vendor = await res.json();
+        if (!cancelled) openEdit(vendor);
+      } catch {
+        if (!cancelled) toast({ title: "This record isn't available to you", variant: "destructive" });
+      } finally {
+        if (!cancelled) navigate("/vendors", { replace: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [search]);
   const closeDialog = () => { setOpen(false); setEditing(null); setForm(emptyForm); };
 
   const createMutation = useMutation({

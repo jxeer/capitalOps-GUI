@@ -19,7 +19,8 @@
  * - Stat cards showing total capital required, raised, and active deals
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Handshake, TrendingUp, Clock, Plus, Trash2, Pencil, Users, CheckCircle2, LayoutGrid, List, Building2, Send } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -169,6 +170,38 @@ export default function Deals() {
     });
     setOpen(true);
   };
+
+  // Deep-link support: /deals?open=<id> (used by chat attachment cards)
+  const search = useSearch();
+  const [, navigate] = useLocation();
+
+  /**
+   * Open a single deal by id when arriving with ?open=<id>.
+   *
+   * Fetched directly by id and opened from the FETCHED object — a record
+   * shared with the current user is NOT in their portfolio-scoped
+   * ["/api/deals"] list; only the by-id endpoint is share-aware. 404
+   * (never shared / revoked) shows a toast. The param is cleared with a
+   * history replace so refresh/close doesn't re-trigger. Same pattern as
+   * assets.tsx.
+   */
+  useEffect(() => {
+    const openId = new URLSearchParams(search).get("open");
+    if (!openId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiRequest("GET", `/api/deals/${openId}`);
+        const deal: Deal = await res.json();
+        if (!cancelled) openEdit(deal);
+      } catch {
+        if (!cancelled) toast({ title: "This record isn't available to you", variant: "destructive" });
+      } finally {
+        if (!cancelled) navigate("/deals", { replace: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [search]);
 
   /**
    * Closes dialog and resets all form state
