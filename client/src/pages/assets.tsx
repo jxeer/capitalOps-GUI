@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { MediaGallery } from "@/components/media-gallery";
+import { CommentsSection } from "@/components/comments-section";
 import { AssetLocationMap } from "@/components/asset-location-map";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
@@ -424,6 +425,10 @@ export default function Assets() {
               {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Create Asset"}
             </Button>
           </form>
+          {/* Comment thread — only when editing an EXISTING asset (a record
+              being created has no id to comment on). Sits outside the form
+              so the comment composer's own form doesn't nest. */}
+          {editing && <CommentsSection recordType="asset" recordId={editing.id} />}
         </DialogContent>
       </Dialog>
     </div>
