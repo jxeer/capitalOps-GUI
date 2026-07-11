@@ -394,13 +394,20 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
                     >
                       {/* Message content (may be empty for share-only messages) */}
                       {msg.content && <p className="text-sm">{msg.content}</p>}
-                      {/* Shared-record card. Links to the record type's
-                          list page — the app has no single-record route,
-                          so the list is the closest existing destination.
+                      {/* Shared-record card. Assets deep-link via
+                          /assets?open=<id> — the assets page fetches that
+                          single asset by id and opens its dialog (a shared
+                          record is NOT in the recipient's list, so it must
+                          be fetched directly). Other types still link to
+                          their list page until the pattern is replicated.
                           recordName is the backend's send-time snapshot. */}
                       {msg.attachment && (
                         <Link
-                          href={ATTACHABLE_TYPES[msg.attachment.recordType]?.page ?? "/dashboard"}
+                          href={
+                            msg.attachment.recordType === "asset"
+                              ? `/assets?open=${msg.attachment.recordId}`
+                              : ATTACHABLE_TYPES[msg.attachment.recordType]?.page ?? "/dashboard"
+                          }
                           className={`mt-1 flex items-center gap-2 rounded-md border p-2 text-xs transition-colors ${
                             isMe
                               ? "border-primary-foreground/30 hover:bg-primary-foreground/10"

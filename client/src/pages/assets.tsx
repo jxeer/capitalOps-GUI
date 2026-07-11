@@ -20,8 +20,9 @@
  * - Full CRUD operations with confirmation dialogs
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation, useSearch } from "wouter";
 import { Building2, MapPin, Maximize2, Plus, Trash2, Pencil, Layers, Home, Briefcase, ShoppingBag } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -122,6 +123,44 @@ export default function Assets() {
    * Closes dialog and resets all form state
    */
   const closeDialog = () => { setOpen(false); setEditing(null); setForm(emptyForm); setLocation(undefined); setMediaPreviews([]); };
+
+  // Deep-link support: /assets?open=<id> (used by chat attachment cards).
+  // wouter's navigate is aliased — this page already has setLocation state
+  // for the map location field.
+  const search = useSearch();
+  const [, navigate] = useLocation();
+
+  /**
+   * Open a single asset by id when arriving with ?open=<id>.
+   *
+   * The asset is fetched directly by id and the dialog opened from the
+   * FETCHED object — deliberately NOT looked up in the ["/api/assets"]
+   * list, because a record shared with the current user is not in their
+   * portfolio-scoped list; only the by-id endpoint is share-aware.
+   * A 404 (never shared, or share revoked) shows a toast instead.
+   * The param is cleared afterwards (replace, no history entry) so
+   * closing the dialog or refreshing doesn't re-trigger the open.
+   */
+  useEffect(() => {
+    const openId = new URLSearchParams(search).get("open");
+    if (!openId) return;
+    // Guard against React strict-mode double-invocation / unmount races
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiRequest("GET", `/api/assets/${openId}`);
+        const asset: Asset = await res.json();
+        if (!cancelled) openEdit(asset);
+      } catch {
+        // apiRequest throws on non-ok — for this endpoint that means the
+        // record doesn't exist or isn't shared with this user (404)
+        if (!cancelled) toast({ title: "This record isn't available to you", variant: "destructive" });
+      } finally {
+        if (!cancelled) navigate("/assets", { replace: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [search]);
 
   /**
    * Mutation for creating new assets
