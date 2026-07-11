@@ -18,15 +18,59 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Send, User, X } from "lucide-react";
+import { Paperclip, Send, User, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Message, Conversation } from "@shared/schema";
+
+/**
+ * Record types that can be shared through chat, mapped to their list
+ * endpoint (for the attach picker — these endpoints already return only
+ * the caller's own records) and their list page (for the message card's
+ * click-through; the app has no single-record detail route, so the card
+ * links to the type's list page).
+ */
+const ATTACHABLE_TYPES: Record<string, { endpoint: string; page: string }> = {
+  asset: { endpoint: "/api/assets", page: "/assets" },
+  project: { endpoint: "/api/projects", page: "/projects" },
+  deal: { endpoint: "/api/deals", page: "/deals" },
+  vendor: { endpoint: "/api/vendors", page: "/vendors" },
+};
+
+/**
+ * Human-readable label for a record in the attach picker. Assets and
+ * vendors have a name; projects and deals don't — the app's list pages
+ * label them by their asset/project name plus phase, so mirror that.
+ */
+function recordLabel(recordType: string, record: any): string {
+  if (recordType === "project")
+    return `${record.assetName || "Unknown asset"}${record.phase ? ` — ${record.phase}` : ""}`;
+  if (recordType === "deal")
+    return `${record.projectName || "Unknown project"}${record.phase ? ` — ${record.phase}` : ""}`;
+  return record.name || "Unnamed";
+}
+
+/** A record picked in the composer, waiting to be sent with the message. */
+interface PendingAttachment {
+  recordType: string;
+  recordId: number;
+  recordName: string;
+  accessLevel: "view" | "edit";
+}
 
 /**
  * Props for CommunicationCenter component.
@@ -63,6 +107,24 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
 
   // Message being composed
   const [messageContent, setMessageContent] = useState("");
+
+  // Record attached to the message being composed (shown as a chip above
+  // the input until sent or removed)
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+
+  // Attach-picker popover state: open flag, chosen record type, chosen level
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [attachType, setAttachType] = useState<string>("asset");
+  const [attachLevel, setAttachLevel] = useState<"view" | "edit">("view");
+
+  // Records the user can attach for the chosen type. Uses the default
+  // queryFn (queryKey[0] as URL) and the same queryKey as the type's list
+  // page, so the cache is shared. These endpoints only return records the
+  // caller owns, which matches the backend's sender-must-own rule.
+  const { data: attachableRecords } = useQuery<any[]>({
+    queryKey: [ATTACHABLE_TYPES[attachType].endpoint],
+    enabled: attachOpen,
+  });
 
   // Fetch the user's conversations from the backend. This was previously a
   // useState([]) that nothing ever populated, so the list was always empty
@@ -109,10 +171,22 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
       if (!selectedConversation?.id) throw new Error("No conversation selected");
-      const res = await apiRequest("POST", "/api/messages", {
+      // Attach the pending record share, if any. The backend validates
+      // ownership, resolves the recipient from the conversation, and
+      // creates the RecordShare — the client only names the record and
+      // level. content may be empty when there's an attachment.
+      const body: Record<string, unknown> = {
         conversationId: selectedConversation.id,
         content,
-      });
+      };
+      if (pendingAttachment) {
+        body.attachment = {
+          recordType: pendingAttachment.recordType,
+          recordId: pendingAttachment.recordId,
+          accessLevel: pendingAttachment.accessLevel,
+        };
+      }
+      const res = await apiRequest("POST", "/api/messages", body);
       return res.json();
     },
     onSuccess: (message) => {
@@ -123,10 +197,11 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
           (prev) => [...(prev || []), message]
         );
       }
-      // Clear the input but KEEP the thread open — the old code also
-      // nulled selectedConversation here, closing the chat after every
-      // single message sent.
+      // Clear the input and any pending attachment but KEEP the thread
+      // open — the old code also nulled selectedConversation here, closing
+      // the chat after every single message sent.
       setMessageContent("");
+      setPendingAttachment(null);
     },
     onError: (err: any) => {
       toast({ title: "Failed to send message", description: err.message, variant: "destructive" });
@@ -164,7 +239,9 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
    */
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageContent.trim() || !selectedConversation) return;
+    // A message must say something OR share something (mirrors the backend
+    // rule: content may be empty when an attachment is present)
+    if ((!messageContent.trim() && !pendingAttachment) || !selectedConversation) return;
     sendMessageMutation.mutate(messageContent.trim());
   };
 
@@ -315,8 +392,28 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
                           : "bg-muted"  // Others' messages: muted background
                       }`}
                     >
-                      {/* Message content */}
-                      <p className="text-sm">{msg.content}</p>
+                      {/* Message content (may be empty for share-only messages) */}
+                      {msg.content && <p className="text-sm">{msg.content}</p>}
+                      {/* Shared-record card. Links to the record type's
+                          list page — the app has no single-record route,
+                          so the list is the closest existing destination.
+                          recordName is the backend's send-time snapshot. */}
+                      {msg.attachment && (
+                        <Link
+                          href={ATTACHABLE_TYPES[msg.attachment.recordType]?.page ?? "/dashboard"}
+                          className={`mt-1 flex items-center gap-2 rounded-md border p-2 text-xs transition-colors ${
+                            isMe
+                              ? "border-primary-foreground/30 hover:bg-primary-foreground/10"
+                              : "border-border bg-background/50 hover:bg-accent"
+                          }`}
+                          data-testid={`card-attachment-${msg.id}`}
+                        >
+                          <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                          <span className="capitalize opacity-70">{msg.attachment.recordType}</span>
+                          <span className="opacity-70">·</span>
+                          <span className="font-medium truncate">{msg.attachment.recordName}</span>
+                        </Link>
+                      )}
                       {/* Timestamp */}
                       <p className="text-[10px] mt-1 text-right opacity-70">
                         {new Date(msg.createdAt).toLocaleString()}
@@ -332,21 +429,114 @@ export function CommunicationCenter({ targetUserId, onClose }: CommunicationCent
               )}
             </div>
 
+            {/* Pending-attachment chip: the record queued to be shared
+                with the next message, removable before sending */}
+            {pendingAttachment && (
+              <div
+                className="mb-2 inline-flex items-center gap-2 self-start rounded-full bg-accent px-3 py-1 text-xs"
+                data-testid="chip-pending-attachment"
+              >
+                <Paperclip className="h-3 w-3" />
+                <span className="font-medium">{pendingAttachment.recordName}</span>
+                <span className="text-muted-foreground">— {pendingAttachment.accessLevel}</span>
+                <button
+                  type="button"
+                  onClick={() => setPendingAttachment(null)}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label="Remove attachment"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+
             {/* Message composition form */}
             <form
               onSubmit={handleSendMessage}
               className="flex gap-2"
             >
+              {/* Attach-record picker: choose a type, an access level, then
+                  click one of your own records to queue it as the pending
+                  attachment. Sending shares it with the other participant. */}
+              <Popover open={attachOpen} onOpenChange={setAttachOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    disabled={sendMessageMutation.isPending}
+                    data-testid="button-attach-record"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 space-y-2" align="start">
+                  <p className="text-sm font-medium">Share a record</p>
+                  <div className="flex gap-2">
+                    <Select value={attachType} onValueChange={setAttachType}>
+                      <SelectTrigger className="flex-1" data-testid="select-attach-type">
+                        <SelectValue placeholder="Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(ATTACHABLE_TYPES).map((t) => (
+                          <SelectItem key={t} value={t} className="capitalize">
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={attachLevel}
+                      onValueChange={(v) => setAttachLevel(v as "view" | "edit")}
+                    >
+                      <SelectTrigger className="w-24" data-testid="select-attach-level">
+                        <SelectValue placeholder="Access" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="view">view</SelectItem>
+                        <SelectItem value="edit">edit</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Your own records of the chosen type; clicking one
+                      queues it and closes the picker */}
+                  <div className="max-h-40 space-y-1 overflow-y-auto">
+                    {(attachableRecords ?? []).map((record) => (
+                      <button
+                        type="button"
+                        key={record.id}
+                        onClick={() => {
+                          setPendingAttachment({
+                            recordType: attachType,
+                            recordId: Number(record.id),
+                            recordName: recordLabel(attachType, record),
+                            accessLevel: attachLevel,
+                          });
+                          setAttachOpen(false);
+                        }}
+                        className="w-full truncate rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
+                      >
+                        {recordLabel(attachType, record)}
+                      </button>
+                    ))}
+                    {attachableRecords?.length === 0 && (
+                      <p className="py-2 text-center text-xs text-muted-foreground">
+                        No {attachType}s to share
+                      </p>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <Input
                 value={messageContent}
                 onChange={(e) => setMessageContent(e.target.value)}
-                placeholder="Type a message..."
+                placeholder={pendingAttachment ? "Add a note (optional)..." : "Type a message..."}
                 disabled={sendMessageMutation.isPending}
               />
               <Button
                 type="submit"
                 size="icon"
-                disabled={!messageContent.trim() || sendMessageMutation.isPending}
+                disabled={(!messageContent.trim() && !pendingAttachment) || sendMessageMutation.isPending}
               >
                 {sendMessageMutation.isPending ? (
                   // Loading spinner while sending

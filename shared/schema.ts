@@ -209,6 +209,18 @@ export const messageSchema = z.object({
   conversationId: z.string(),
   senderId: z.string(),
   content: z.string(),
+  // Shared-record card attached to the message, or null for plain text.
+  // recordName is the backend's display-name snapshot from send time, so
+  // the card renders without fetching the record (and still shows a name
+  // if the share is later revoked). Matches Message.to_dict().
+  attachment: z
+    .object({
+      recordType: z.string(),
+      recordId: z.number(),
+      recordName: z.string(),
+    })
+    .nullable()
+    .optional(),
   readAt: z.string().optional(),
   createdAt: z.string(),
 });
