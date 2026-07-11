@@ -125,6 +125,11 @@ export default function Assets() {
    */
   const closeDialog = () => { setOpen(false); setEditing(null); setForm(emptyForm); setLocation(undefined); setMediaPreviews([]); };
 
+  // View-share recipients get a read-only dialog. accessLevel only comes
+  // from the by-id GET (the deep-link path); assets opened from the list
+  // have no accessLevel — they're portfolio-scoped, i.e. owned, editable.
+  const viewOnly = editing?.accessLevel === "view";
+
   // Deep-link support: /assets?open=<id> (used by chat attachment cards).
   // wouter's navigate is aliased — this page already has setLocation state
   // for the map location field.
@@ -373,11 +378,18 @@ export default function Assets() {
       </div>
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(true); }}>
-        <DialogContent className="max-w-md">
+        {/* Capped height + internal scroll: the comments section made the
+            dialog taller than the viewport, leaving Save unreachable */}
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Asset" : "Create New Asset"}</DialogTitle>
+            <DialogTitle>{viewOnly ? "View Asset" : editing ? "Edit Asset" : "Create New Asset"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* A disabled fieldset natively disables every input, select
+              trigger, and button inside it — one switch for the whole form
+              instead of a disabled prop on each field. The server rejects
+              view-share writes anyway; this just stops the doomed Save. */}
+          <form onSubmit={handleSubmit}>
+            <fieldset disabled={viewOnly} className="space-y-4">
             <div className="space-y-2">
               <Label>Name</Label>
               <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Asset name" data-testid="input-asset-name" required />
@@ -421,9 +433,16 @@ export default function Assets() {
               <Label>Asset Location</Label>
               <AssetLocationMap initialLocation={location} onChange={setLocation} />
             </div>
-            <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-asset">
-              {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Create Asset"}
-            </Button>
+            {viewOnly ? (
+              <p className="text-center text-xs text-muted-foreground" data-testid="note-view-only">
+                View only — shared with you
+              </p>
+            ) : (
+              <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-asset">
+                {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Create Asset"}
+              </Button>
+            )}
+            </fieldset>
           </form>
           {/* Comment thread — only when editing an EXISTING asset (a record
               being created has no id to comment on). Sits outside the form

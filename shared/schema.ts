@@ -24,6 +24,11 @@ export const assetSchema = z.object({
   status: z.enum(["Pre-dev", "Active", "Stabilized"]),
   assetManager: z.string(),
   media: z.array(mediaSchema).optional().default([]),
+  // How the CURRENT USER can access this asset — only present on the by-id
+  // GET (owner or share recipient); the list endpoint omits it (lists are
+  // portfolio-scoped, so everything there is owned). "view" renders the
+  // edit dialog read-only.
+  accessLevel: z.enum(["owner", "edit", "view"]).optional(),
 });
 export type Asset = z.infer<typeof assetSchema>;
 export const insertAssetSchema = assetSchema.omit({ id: true });
