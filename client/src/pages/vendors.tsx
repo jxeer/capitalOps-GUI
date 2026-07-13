@@ -31,6 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/page-header";
+import { CommentsSection } from "@/components/comments-section";
 import { StatCard } from "@/components/stat-card";
 import { getStatusColor } from "@/lib/formatters";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -94,6 +95,11 @@ export default function Vendors() {
     setForm({ assetId: v.assetId, name: v.name, type: v.type, coiStatus: v.coiStatus, slaType: v.slaType, performanceScore: String(v.performanceScore) });
     setOpen(true);
   };
+
+  // View-share recipients get a read-only dialog. accessLevel only comes
+  // from the by-id GET (the deep-link path); vendors opened from the list
+  // have no accessLevel — they're portfolio-scoped, i.e. owned, editable.
+  const viewOnly = editing?.accessLevel === "view";
 
   // Deep-link support: /vendors?open=<id> (used by chat attachment cards)
   const search = useSearch();
@@ -268,11 +274,16 @@ export default function Vendors() {
       </div>
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(true); }}>
-        <DialogContent className="max-w-md">
+        {/* Capped height + internal scroll — the comments section can push
+            the dialog past the viewport (same fix as assets.tsx) */}
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Vendor" : "Add New Vendor"}</DialogTitle>
+            <DialogTitle>{viewOnly ? "View Vendor" : editing ? "Edit Vendor" : "Add New Vendor"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Disabled fieldset natively disables every field inside — one
+              switch for view-only mode (same pattern as assets.tsx) */}
+          <form onSubmit={handleSubmit}>
+            <fieldset disabled={viewOnly} className="space-y-4">
             <div className="space-y-2">
               <Label>Name</Label>
               <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Vendor name" data-testid="input-vendor-name" required />
@@ -313,10 +324,21 @@ export default function Vendors() {
               <Label>Performance Score (0–100)</Label>
               <Input type="number" min="0" max="100" value={form.performanceScore} onChange={(e) => setField("performanceScore", e.target.value)} data-testid="input-perf-score" required />
             </div>
-            <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-vendor">
-              {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Add Vendor"}
-            </Button>
+            {viewOnly ? (
+              <p className="text-center text-xs text-muted-foreground" data-testid="note-view-only">
+                View only — shared with you
+              </p>
+            ) : (
+              <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-vendor">
+                {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Add Vendor"}
+              </Button>
+            )}
+            </fieldset>
           </form>
+          {/* Comment thread — existing records only; OUTSIDE the form (nested
+              forms break submission) and the fieldset (view-only recipients
+              may still comment) */}
+          {editing && <CommentsSection recordType="vendor" recordId={editing.id} />}
         </DialogContent>
       </Dialog>
     </div>

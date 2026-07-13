@@ -47,6 +47,8 @@ export const projectSchema = z.object({
   pmAssigned: z.string(),
   description: z.string().optional(),
   media: z.array(mediaSchema).optional().default([]),
+  // Current user's access — by-id GET only (see assetSchema.accessLevel)
+  accessLevel: z.enum(["owner", "edit", "view"]).optional(),
 });
 export type Project = z.infer<typeof projectSchema>;
 export const insertProjectSchema = projectSchema.omit({ id: true });
@@ -64,6 +66,8 @@ export const dealSchema = z.object({
   complexity: z.enum(["Simple", "Moderate", "Complex"]),
   phase: z.string(),
   status: z.enum(["Draft", "Open", "Active", "Funded", "Closed"]),
+  // Current user's access — by-id GET only (see assetSchema.accessLevel)
+  accessLevel: z.enum(["owner", "edit", "view"]).optional(),
 });
 export type Deal = z.infer<typeof dealSchema>;
 export const insertDealSchema = dealSchema.omit({ id: true });
@@ -125,6 +129,8 @@ export const vendorSchema = z.object({
   coiStatus: z.enum(["Current", "Expired", "Pending"]),
   slaType: z.string(),
   performanceScore: z.number(),
+  // Current user's access — by-id GET only (see assetSchema.accessLevel)
+  accessLevel: z.enum(["owner", "edit", "view"]).optional(),
 });
 export type Vendor = z.infer<typeof vendorSchema>;
 export const insertVendorSchema = vendorSchema.omit({ id: true });

@@ -40,6 +40,7 @@ import { AssetLocationMap } from "@/components/asset-location-map";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { FieldMediaUploader } from "@/components/FieldMediaUploader";
+import { CommentsSection } from "@/components/comments-section";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/formatters";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -161,6 +162,11 @@ export default function Projects() {
     setMediaPreviews(project.media || []);
     setOpen(true);
   };
+
+  // View-share recipients get a read-only dialog. accessLevel only comes
+  // from the by-id GET (the deep-link path); projects opened from the list
+  // have no accessLevel — they're portfolio-scoped, i.e. owned, editable.
+  const viewOnly = editing?.accessLevel === "view";
 
   // Deep-link support: /projects?open=<id> (used by chat attachment cards).
   // wouter's navigate is aliased — this page already has setLocation state
@@ -507,8 +513,11 @@ export default function Projects() {
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(true); }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? "Edit Project" : "Create New Project"}</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <DialogHeader><DialogTitle>{viewOnly ? "View Project" : editing ? "Edit Project" : "Create New Project"}</DialogTitle></DialogHeader>
+          {/* Disabled fieldset natively disables every field inside — one
+              switch for view-only mode (same pattern as assets.tsx) */}
+          <form onSubmit={handleSubmit}>
+            <fieldset disabled={viewOnly} className="space-y-4">
             <div className="space-y-2">
               <Label>Asset</Label>
               <Select value={form.assetId} onValueChange={(v) => setField("assetId", v)}>
@@ -573,10 +582,21 @@ export default function Projects() {
               <Label>Asset Location</Label>
               <AssetLocationMap initialLocation={location} onChange={setLocation} />
             </div>
-            <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-project">
-              {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Create Project"}
-            </Button>
+            {viewOnly ? (
+              <p className="text-center text-xs text-muted-foreground" data-testid="note-view-only">
+                View only — shared with you
+              </p>
+            ) : (
+              <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-project">
+                {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Create Project"}
+              </Button>
+            )}
+            </fieldset>
           </form>
+          {/* Comment thread — existing records only; OUTSIDE the form (nested
+              forms break submission) and the fieldset (view-only recipients
+              may still comment) */}
+          {editing && <CommentsSection recordType="project" recordId={editing.id} />}
         </DialogContent>
       </Dialog>
 

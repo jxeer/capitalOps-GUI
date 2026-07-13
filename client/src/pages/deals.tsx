@@ -37,6 +37,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { DealCard } from "@/components/deal-card";
+import { CommentsSection } from "@/components/comments-section";
 import { formatCurrency, getStatusColor } from "@/lib/formatters";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -170,6 +171,11 @@ export default function Deals() {
     });
     setOpen(true);
   };
+
+  // View-share recipients get a read-only dialog. accessLevel only comes
+  // from the by-id GET (the deep-link path); deals opened from the list
+  // have no accessLevel — they're portfolio-scoped, i.e. owned, editable.
+  const viewOnly = editing?.accessLevel === "view";
 
   // Deep-link support: /deals?open=<id> (used by chat attachment cards)
   const search = useSearch();
@@ -545,9 +551,12 @@ export default function Deals() {
       <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(true); }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Deal" : "Create New Deal"}</DialogTitle>
+            <DialogTitle>{viewOnly ? "View Deal" : editing ? "Edit Deal" : "Create New Deal"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Disabled fieldset natively disables every field inside — one
+              switch for view-only mode (same pattern as assets.tsx) */}
+          <form onSubmit={handleSubmit}>
+            <fieldset disabled={viewOnly} className="space-y-4">
             <div className="space-y-2">
               <Label>Project</Label>
               <Select value={form.projectId} onValueChange={(v) => setField("projectId", v)}>
@@ -623,10 +632,21 @@ export default function Deals() {
                 </Select>
               </div>
             </div>
-            <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-deal">
-              {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Create Deal"}
-            </Button>
+            {viewOnly ? (
+              <p className="text-center text-xs text-muted-foreground" data-testid="note-view-only">
+                View only — shared with you
+              </p>
+            ) : (
+              <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-deal">
+                {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : editing ? "Save Changes" : "Create Deal"}
+              </Button>
+            )}
+            </fieldset>
           </form>
+          {/* Comment thread — existing records only; OUTSIDE the form (nested
+              forms break submission) and the fieldset (view-only recipients
+              may still comment) */}
+          {editing && <CommentsSection recordType="deal" recordId={editing.id} />}
         </DialogContent>
       </Dialog>
 
